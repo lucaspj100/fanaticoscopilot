@@ -13,6 +13,7 @@ const els = {
   diagTotal: document.getElementById("diag-total"),
   diagFirst: document.getElementById("diag-first"),
   diagFull: document.getElementById("diag-full"),
+  net: document.getElementById("net"),
 };
 
 const ETAPAS_DIAG = [
@@ -41,6 +42,26 @@ function renderTiming(t) {
   els.diagFull.textContent = fmt(t.total);
   els.diagFirst.classList.toggle("slow", (t.primeiroAlerta ?? 0) > 1000);
   els.diagFull.classList.toggle("slow", (t.total ?? 0) > 3000);
+}
+
+function renderNet(n) {
+  const linhas = [
+    [`${n.method} ${n.url}`, ""],
+    ["HTTP", n.status != null ? String(n.status) : n.kind || "sem resposta"],
+    ["Resultado", n.ok ? "OK" : n.kind ? `Erro de ${n.kind}` : "Erro"],
+    ["Tempo", fmt(n.ms)],
+  ];
+  if (n.error) linhas.push(["Mensagem", n.error]);
+  els.net.replaceChildren(
+    ...linhas.map(([label, value]) => {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = value;
+      li.append(label, b);
+      if (!n.ok) li.classList.add("slow");
+      return li;
+    }),
+  );
 }
 
 let running = false;
@@ -138,6 +159,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
+  if (msg?.type === "COPILOT_NET") renderNet(msg.net);
   if (msg?.type === "COPILOT_STATUS") {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }
