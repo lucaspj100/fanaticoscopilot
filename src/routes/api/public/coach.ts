@@ -60,6 +60,7 @@ export const Route = createFileRoute("/api/public/coach")({
             headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               model: "google/gemini-3.7-flash",
+              reasoning_effort: "none", // latência: sem raciocínio, resposta em ~1s
               messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 {
@@ -68,7 +69,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 },
               ],
               response_format: { type: "json_object" },
-              max_tokens: 160,
+              max_tokens: 200,
               temperature: 0.3,
             }),
           });
