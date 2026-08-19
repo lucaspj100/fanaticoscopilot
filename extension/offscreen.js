@@ -49,6 +49,8 @@ const RULES = [
   ["tempo", [/n[ãa]o (tenho|teria|vou ter) tempo/i, /\b(corrid[oa]|sem tempo|agenda cheia|mais pra frente|ano que vem)\w*/i, /agora n[ãa]o [ée] (o|um bom) momento/i]],
   ["metodologia", [/como (funciona|que funciona|seria)/i, /qual (a|é a) (metodologia|m[ée]todo|din[âa]mica)/i, /\b(quanto tempo dura|garantia|funciona mesmo)\w*/i]],
   ["interesse", [/\b(gostei|interessante|faz sentido|adorei|curti)\b/i, /era isso que eu (precisava|queria)/i]],
+  ["aprofunde_objetivo", [/\b(ganhar|receber|faturar|sal[áa]rio) em (d[óo]lar|euro|moeda)/i, /\b(trabalhar|morar|viajar) (fora|no exterior|nos eua)/i, /\bquero (ganhar|conquistar|chegar|alcan[çc]ar)\b/i]],
+  ["falta_problema", [/\b(progredir|crescer|evoluir|avan[çc]ar|subir) (na|de|no) (carreira|cargo|n[íi]vel|empresa)/i, /\b(quest[ãa]o|motivo|lado) profissional\b/i, /\b(melhorar|crescer|evoluir) profissionalmente\b/i, /\b(promo[çc][ãa]o|pr[óo]ximo n[íi]vel|mudar de [áa]rea)\b/i]],
   ["aprofunde", [/\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i, /\b(quero|preciso) (aprender|falar|melhorar) (o )?ingl[êe]s\b/i]],
 ];
 
@@ -61,6 +63,8 @@ const FALLBACKS = {
   tempo: { rotulo: "TEMPO", nivel: "aviso", orientacao: "Entenda se é agenda real ou medo de não dar conta." },
   metodologia: { rotulo: "METODOLOGIA", nivel: "atencao", orientacao: "Entenda a expectativa antes de defender o método." },
   interesse: { rotulo: "INTERESSE", nivel: "positivo", orientacao: "Aprofunde com as palavras dele." },
+  aprofunde_objetivo: { rotulo: "APROFUNDE O OBJETIVO", nivel: "atencao", orientacao: "Transforme o objetivo em algo concreto.", etapa: "spin" },
+  falta_problema: { rotulo: "FALTA PROBLEMA", nivel: "atencao", orientacao: "Descubra o que hoje impede esse avanço.", etapa: "spin" },
   aprofunde: { rotulo: "APROFUNDE", nivel: "atencao", orientacao: "A resposta ainda está superficial." },
 };
 
@@ -193,7 +197,11 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   while (turns.length > 4) turns.shift();
 
   // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
-  if (!quick && text.split(/\s+/).length < 6) { log("ouvindo"); return; }
+  if (!quick && text.split(/\s+/).length < 4) {
+    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text } }).catch(() => {});
+    log("ouvindo");
+    return;
+  }
 
   const iaStart = performance.now();
   try {
@@ -203,6 +211,21 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
       body: JSON.stringify({ turns, tipo: quick?.tipo, etapa: quick?.etapa }),
     });
     timing.ia = Math.round(performance.now() - iaStart);
+    chrome.runtime
+      .sendMessage({
+        type: "COPILOT_DECISION",
+        decision: {
+          decisao: card.decisao || (card.tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL"),
+          tipo: card.tipo,
+          etapa: card.etapa,
+          orientacao: card.orientacao,
+          frase: card.frase,
+          confianca: card.confianca,
+          aviso: card.aviso,
+          debug: card.debug,
+        },
+      })
+      .catch(() => {});
     if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
