@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Copiloto comercial em tempo real para calls de vendas no Zoom Web.",
   "permissions": ["tabCapture", "offscreen", "sidePanel", "storage"],
-  "host_permissions": ["https://*.lovable.app/*", "http://localhost:8080/*"],
+  "host_permissions": ["https://fanaticoscopilot.lovable.app/*", "http://localhost:8080/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "Abrir United Copilot" },
   "side_panel": { "default_path": "sidepanel.html" },

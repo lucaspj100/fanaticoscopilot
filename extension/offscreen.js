@@ -125,9 +125,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   try {
     const form = new FormData();
     form.append("file", blob, "recording.wav");
-    const res = await fetch(`${endpoint}/api/public/transcribe`, { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    const data = await apiFetch("/api/public/transcribe", { method: "POST", body: form });
     text = (data.text || "").trim();
     const roundTrip = Math.round(performance.now() - sttStart);
     timing.stt = Math.min(roundTrip, data.sttMs ?? roundTrip);
@@ -159,14 +157,13 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
 
   const iaStart = performance.now();
   try {
-    const res = await fetch(`${endpoint}/api/public/coach`, {
+    const card = await apiFetch("/api/public/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ turns }),
     });
-    const card = await res.json();
     timing.ia = Math.round(performance.now() - iaStart);
-    if (res.ok && card.tipo && card.tipo !== "nenhum") {
+    if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
       push({ ...card, ms: timing.total });
@@ -176,6 +173,35 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     log("erro", { error: `IA: ${e.message}` });
   }
   log("ouvindo");
+}
+
+
+// ---- Diagnóstico de rede (temporário, para validação do MVP) ----
+function netReport(info) {
+  chrome.runtime.sendMessage({ type: "COPILOT_NET", net: info }).catch(() => {});
+}
+
+async function apiFetch(path, init) {
+  const url = `${endpoint}${path}`;
+  const method = init.method || "POST";
+  const started = performance.now();
+  try {
+    const res = await fetch(url, init);
+    const ms = Math.round(performance.now() - started);
+    let body = null;
+    try { body = await res.json(); } catch { body = null; }
+    netReport({ url, method, status: res.status, ok: res.ok, ms, error: res.ok ? null : (body?.error || `HTTP ${res.status}`) });
+    if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+    return body ?? {};
+  } catch (e) {
+    const ms = Math.round(performance.now() - started);
+    const isNetwork = e instanceof TypeError || /Failed to fetch|NetworkError/i.test(e.message);
+    if (isNetwork) {
+      netReport({ url, method, status: null, ok: false, ms, error: e.message, kind: "rede/CORS" });
+      throw new Error(`Rede/CORS: ${url} inacessível (${e.message}). Confira host_permissions e a URL do servidor.`);
+    }
+    throw e;
+  }
 }
 
 function flush(speechEndAt) {

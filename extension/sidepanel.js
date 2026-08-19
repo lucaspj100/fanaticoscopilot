@@ -1,4 +1,6 @@
-const DEFAULT_ENDPOINT = "https://id-preview--ca4edc97-ed9d-42d0-af3c-3c6e44cfad3b.lovable.app";
+const DEFAULT_ENDPOINT = "https://fanaticoscopilot.lovable.app";
+// URLs de preview do Lovable exigem sessão e não são acessíveis por uma extensão.
+const isPreviewUrl = (u) => /id-preview--|lovableproject\.com/.test(u || "");
 
 const els = {
   toggle: document.getElementById("toggle"),
@@ -11,6 +13,7 @@ const els = {
   diagTotal: document.getElementById("diag-total"),
   diagFirst: document.getElementById("diag-first"),
   diagFull: document.getElementById("diag-full"),
+  net: document.getElementById("net"),
 };
 
 const ETAPAS_DIAG = [
@@ -41,11 +44,33 @@ function renderTiming(t) {
   els.diagFull.classList.toggle("slow", (t.total ?? 0) > 3000);
 }
 
+function renderNet(n) {
+  const linhas = [
+    [`${n.method} ${n.url}`, ""],
+    ["HTTP", n.status != null ? String(n.status) : n.kind || "sem resposta"],
+    ["Resultado", n.ok ? "OK" : n.kind ? `Erro de ${n.kind}` : "Erro"],
+    ["Tempo", fmt(n.ms)],
+  ];
+  if (n.error) linhas.push(["Mensagem", n.error]);
+  els.net.replaceChildren(
+    ...linhas.map(([label, value]) => {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = value;
+      li.append(label, b);
+      if (!n.ok) li.classList.add("slow");
+      return li;
+    }),
+  );
+}
+
 let running = false;
 let lastTipo = null;
 
 chrome.storage.local.get(["endpoint"]).then(({ endpoint }) => {
-  els.endpoint.value = endpoint || DEFAULT_ENDPOINT;
+  const url = !endpoint || isPreviewUrl(endpoint) ? DEFAULT_ENDPOINT : endpoint;
+  els.endpoint.value = url;
+  chrome.storage.local.set({ endpoint: url });
 });
 els.endpoint.addEventListener("change", () => {
   chrome.storage.local.set({ endpoint: els.endpoint.value.trim() });
@@ -134,6 +159,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
+  if (msg?.type === "COPILOT_NET") renderNet(msg.net);
   if (msg?.type === "COPILOT_STATUS") {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }
