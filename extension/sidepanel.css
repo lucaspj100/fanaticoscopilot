@@ -118,3 +118,5 @@ footer input {
 .diag-key { display: flex; gap: 12px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .diag-key b { font-size: 13px; color: var(--positivo); margin-left: 4px; }
 .diag-key b.slow { color: var(--alerta); }
+.diag li.slow b { color: var(--alerta); }
+.diag li { word-break: break-all; }
