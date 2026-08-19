@@ -28,21 +28,33 @@ type Card = Signal & { fonte?: string; ms?: number };
 
 const NIVEL_STYLE: Record<string, string> = {
   alerta: "border-l-alerta",
+  aviso: "border-l-aviso",
   atencao: "border-l-atencao",
   positivo: "border-l-positivo",
 };
 const NIVEL_TEXT: Record<string, string> = {
   alerta: "text-alerta",
+  aviso: "text-aviso",
   atencao: "text-atencao",
   positivo: "text-positivo",
+};
+
+const ETAPA_LABEL: Record<string, string> = {
+  rapport: "Rapport",
+  di: "Regra do jogo / D.I.",
+  spin: "Pré-speech / SPIN",
+  apresentacao: "Apresentação",
+  gatilho: "Gatilho de fechamento",
+  fechamento: "Fechamento",
 };
 
 const EXEMPLOS = [
   "Gostei bastante, mas preciso pensar melhor.",
   "Achei o valor um pouco acima do que eu esperava.",
   "Preciso conversar com minha esposa antes de decidir.",
+  "Preciso do inglês para a minha carreira.",
   "Agora estou muito corrido, talvez mais pra frente.",
-  "Como funciona exatamente a metodologia de vocês?",
+  "Já fiz outro curso e não deu certo.",
   "Quero começar. Como eu faço pra contratar?",
 ];
 
@@ -51,15 +63,28 @@ function CopilotCard({ card }: { card: Card }) {
     <article
       className={`rounded-xl border border-border border-l-4 bg-surface p-4 ${NIVEL_STYLE[card.nivel] ?? "border-l-border"}`}
     >
-      <div className={`text-[11px] font-extrabold uppercase tracking-[0.14em] ${NIVEL_TEXT[card.nivel] ?? ""}`}>
-        {card.rotulo}
+      <div className="flex items-baseline justify-between gap-3">
+        <div className={`text-[11px] font-extrabold uppercase tracking-[0.14em] ${NIVEL_TEXT[card.nivel] ?? ""}`}>
+          {card.rotulo}
+        </div>
+        {card.etapa && (
+          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            {ETAPA_LABEL[card.etapa] ?? card.etapa}
+          </div>
+        )}
       </div>
       <p className="mt-1.5 text-lg leading-tight font-bold">{card.orientacao}</p>
       {card.frase && (
-        <p className="mt-2.5 rounded-lg border border-dashed border-border bg-background px-3 py-2 text-base">
-          “{card.frase}”
-        </p>
+        <div className="mt-2.5">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-muted-foreground">
+            Pergunte:
+          </div>
+          <p className="mt-1 rounded-lg border border-dashed border-border bg-background px-3 py-2 text-base">
+            “{card.frase}”
+          </p>
+        </div>
       )}
+
       <p className="mt-2 text-[11px] text-muted-foreground">
         {card.fonte === "regra" ? "regra instantânea" : "IA + playbook"}
         {card.ms != null && ` · ${card.ms} ms`}

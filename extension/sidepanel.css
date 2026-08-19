@@ -5,8 +5,10 @@
   --text: #eef4fa;
   --muted: #7f95a8;
   --alerta: #ff4d4d;
+  --aviso: #ff8a3d;
   --atencao: #ffb020;
   --positivo: #21d07a;
+
 }
 
 * { box-sizing: border-box; }
@@ -62,21 +64,27 @@ main { display: flex; flex-direction: column; gap: 10px; flex: 1; }
 @keyframes in { from { opacity: 0; transform: translateY(6px); } }
 
 .card.alerta { border-left-color: var(--alerta); }
+.card.aviso { border-left-color: var(--aviso); }
 .card.atencao { border-left-color: var(--atencao); }
 .card.positivo { border-left-color: var(--positivo); }
 
 .card .tag {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-weight: 800;
   color: var(--muted);
 }
 .card.alerta .tag { color: var(--alerta); }
+.card.aviso .tag { color: var(--aviso); }
 .card.atencao .tag { color: var(--atencao); }
 .card.positivo .tag { color: var(--positivo); }
 
-.card .orient { margin: 6px 0 10px; font-size: 17px; font-weight: 700; line-height: 1.25; }
+.card .etapa { float: right; font-size: 10px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; font-weight: 700; }
+
+.card .orient { margin: 8px 0 10px; font-size: 18px; font-weight: 700; line-height: 1.25; }
+.card .frase-label { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); font-weight: 800; margin-bottom: 4px; }
+
 
 .card .frase {
   background: #0b1219;

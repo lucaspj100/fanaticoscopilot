@@ -19,6 +19,15 @@ const Body = z.object({
 });
 
 const VALID: SignalType[] = [
+  "rapport_longo",
+  "di_ausente",
+  "aprofunde",
+  "falta_implicacao",
+  "criterio_compra",
+  "personalize",
+  "quatro_fatores",
+  "validar_solucao",
+  "isolar_financeiro",
   "financeiro",
   "tempo",
   "pensar",
@@ -26,9 +35,14 @@ const VALID: SignalType[] = [
   "metodologia",
   "interesse",
   "intencao_compra",
-  "fechamento",
+  "nao_negocie",
+  "pedido_decisao",
+  "fechou",
   "nenhum",
 ];
+
+const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
+
 
 export const Route = createFileRoute("/api/public/coach")({
   server: {
@@ -93,6 +107,7 @@ export const Route = createFileRoute("/api/public/coach")({
           };
           const raw = data.choices?.[0]?.message?.content ?? "{}";
           const out = JSON.parse(raw.replace(/^```json\s*|```$/g, "")) as {
+            etapa?: string;
             tipo?: string;
             orientacao?: string;
             frase?: string;
@@ -103,17 +118,21 @@ export const Route = createFileRoute("/api/public/coach")({
             return Response.json({ tipo: "nenhum", fonte: "ia", ms: Date.now() - started }, { headers: CORS });
           }
           const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
+          const etapa = (ETAPAS as readonly string[]).includes(out.etapa ?? "") ? out.etapa : base.etapa;
 
           return Response.json(
             {
               tipo,
+              etapa,
               rotulo: base.rotulo,
               nivel: base.nivel,
-              orientacao: out.orientacao?.trim() || base.orientacao,
-              frase: out.frase?.trim() || base.frase,
+              // Uma linha, uma frase — nunca parágrafos durante a call.
+              orientacao: (out.orientacao?.trim() || base.orientacao).split("\n")[0],
+              frase: (out.frase ?? "").trim() || base.frase,
               fonte: "ia",
               ms: Date.now() - started,
             },
+
             { headers: CORS },
           );
         } catch (e) {

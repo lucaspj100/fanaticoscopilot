@@ -1,11 +1,22 @@
 /**
- * Camada 1 — detecção instantânea por padrões.
+ * Camada 1 — detecção instantânea por padrões (regra de latência).
  *
- * Roda em milissegundos (no navegador e no servidor) e mostra um card
- * imediatamente, antes da IA responder. A IA depois refina o card.
+ * Roda em milissegundos e mostra imediatamente a situação principal, antes
+ * da IA responder. A IA depois refina/troca o card do mesmo momento.
  */
 
+export type Etapa = "rapport" | "di" | "spin" | "apresentacao" | "gatilho" | "fechamento";
+
 export type SignalType =
+  | "rapport_longo"
+  | "di_ausente"
+  | "aprofunde"
+  | "falta_implicacao"
+  | "criterio_compra"
+  | "personalize"
+  | "quatro_fatores"
+  | "validar_solucao"
+  | "isolar_financeiro"
   | "financeiro"
   | "tempo"
   | "pensar"
@@ -13,32 +24,37 @@ export type SignalType =
   | "metodologia"
   | "interesse"
   | "intencao_compra"
-  | "fechamento"
+  | "nao_negocie"
+  | "pedido_decisao"
+  | "fechou"
   | "nenhum";
+
+export type Nivel = "alerta" | "aviso" | "atencao" | "positivo";
 
 export type Signal = {
   tipo: SignalType;
   rotulo: string;
   orientacao: string;
   frase: string;
-  nivel: "alerta" | "atencao" | "positivo";
+  nivel: Nivel;
+  etapa?: Etapa;
 };
 
+/** Ordem = prioridade. Só o sinal mais importante é exibido. */
 const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   {
-    tipo: "financeiro",
+    tipo: "fechou",
     patterns: [
-      /\b(caro|carinho|preç|preco|valor|invest|orçament|orcament|dinheiro|grana|cabe no bolso|condiç|condic|desconto|parcel|boleto|financiament)\w*/i,
-      /n[ãa]o tenho (esse|como|dinheiro|verba)/i,
-      /fora do meu (or[çc]amento|budget)/i,
+      /\b(vamos fechar|bora fechar|quero (come[çc]ar|fechar|me matricular)|fechado|pode fazer|t[ôo] dentro|to dentro|me matricula)\b/i,
+      /\b(sim,? (vamos|quero|pode))\b/i,
     ],
   },
   {
-    tipo: "tempo",
+    tipo: "intencao_compra",
     patterns: [
-      /n[ãa]o (tenho|teria) tempo/i,
-      /\b(corrid[oa]|atarefad|agenda cheia|sem tempo|mais pra frente|depois do|ano que vem|pr[óo]ximo m[êe]s)\w*/i,
-      /agora n[ãa]o [ée] (o|um bom) momento/i,
+      /como (eu )?(fa[çc]o|posso) (para|pra) (come[çc]ar|contratar|assinar|me matricular)/i,
+      /\b(manda o link|onde (eu )?assino|como funciona o pagamento|qual o pr[óo]ximo passo)\b/i,
+      /quando (eu )?(consigo|posso) (come[çc]ar|entrar)/i,
     ],
   },
   {
@@ -53,6 +69,15 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
     ],
   },
   {
+    tipo: "financeiro",
+    patterns: [
+      /\b(caro|pre[çc]o|valor|invest|or[çc]ament|dinheiro|grana|condi[çc]|desconto|parcel|boleto|financiament)\w*/i,
+      /n[ãa]o tenho (esse|como|dinheiro|verba)/i,
+      /fora do meu (or[çc]amento|budget)/i,
+      /cabe no bolso/i,
+    ],
+  },
+  {
     tipo: "segunda_opiniao",
     patterns: [
       /(minha|meu) (esposa|marido|s[óo]cio|s[óo]cia|companheir[ao]|namorad[ao]|chefe|gestor|pai|m[ãa]e)/i,
@@ -62,83 +87,167 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
     ],
   },
   {
+    tipo: "tempo",
+    patterns: [
+      /n[ãa]o (tenho|teria|vou ter) tempo/i,
+      /\b(corrid[oa]|atarefad|agenda cheia|sem tempo|mais pra frente|ano que vem|pr[óo]ximo m[êe]s)\w*/i,
+      /agora n[ãa]o [ée] (o|um bom) momento/i,
+      /conciliar com (o|meu) trabalho/i,
+    ],
+  },
+  {
     tipo: "metodologia",
     patterns: [
-      /como (funciona|que funciona|é feito|seria)/i,
-      /qual (a|é a) (metodologia|met[óo]do|din[âa]mica)/i,
-      /\b(quantas sess|quanto tempo dura|formato|presencial|online|garantia|funciona mesmo)\w*/i,
-      /j[áa] tentei (outro|outra|isso)/i,
+      /como (funciona|que funciona|[ée] feito|seria)/i,
+      /qual (a|[ée] a) (metodologia|m[ée]todo|din[âa]mica)/i,
+      /\b(quantas aulas|quanto tempo dura|formato|presencial|online|garantia|funciona mesmo|professor)\w*/i,
+      /j[áa] (tentei|fiz) (outro|outra|isso|curso)/i,
     ],
   },
   {
     tipo: "interesse",
     patterns: [
-      /\b(gostei|interessante|faz sentido|legal isso|adorei|curti|bacana)\b/i,
+      /\b(gostei|interessante|faz sentido|adorei|curti|bacana|legal isso)\b/i,
       /era (bem )?isso que eu (precisava|queria|procurava)/i,
     ],
   },
   {
-    tipo: "intencao_compra",
+    tipo: "aprofunde",
     patterns: [
-      /como (eu )?(fa[çc]o|posso) (para|pra) (come[çc]ar|contratar|assinar)/i,
-      /\b(quero come[çc]ar|bora|vamos (nessa|fechar)|me manda|manda o link|onde (eu )?assino)\b/i,
-      /quando (eu )?(consigo|posso) (come[çc]ar|entrar)/i,
+      /\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i,
+      /\b(quero|preciso) (aprender|falar|melhorar) (o )?ingl[êe]s\b/i,
+      /\b(sempre quis|sempre tive vontade)\b/i,
     ],
-  },
-  {
-    tipo: "fechamento",
-    patterns: [/pr[óo]ximo passo/i, /o que (eu )?preciso fazer (agora|ent[ãa]o)/i, /fech(ado|amos)\b/i],
   },
 ];
 
 export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo">> = {
+  rapport_longo: {
+    rotulo: "RAPPORT LONGO",
+    orientacao: "A conexão já foi criada. Avance para a call.",
+    frase: "",
+    nivel: "atencao",
+    etapa: "rapport",
+  },
+  di_ausente: {
+    rotulo: "D.I. NÃO ESTABELECIDA",
+    orientacao: "Alinhe o posicionamento ao final antes de aprofundar.",
+    frase: "Ao final da nossa conversa, você me diz se faz sentido ou não, tudo bem?",
+    nivel: "atencao",
+    etapa: "di",
+  },
+  aprofunde: {
+    rotulo: "APROFUNDE",
+    orientacao: "A resposta ainda está superficial.",
+    frase: "Em que exatamente o inglês está te limitando hoje?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  falta_implicacao: {
+    rotulo: "FALTA IMPLICAÇÃO",
+    orientacao: "Explore o impacto desse problema antes de seguir.",
+    frase: "O que você já deixou de conquistar por causa disso?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  criterio_compra: {
+    rotulo: "CRITÉRIO DE COMPRA",
+    orientacao: "Descubra o que ele valoriza antes de apresentar.",
+    frase: "O que um curso de inglês precisa ter para realmente fazer sentido para você?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  personalize: {
+    rotulo: "PERSONALIZE",
+    orientacao: "Conecte esse diferencial a algo que ele falou.",
+    frase: "",
+    nivel: "atencao",
+    etapa: "apresentacao",
+  },
+  quatro_fatores: {
+    rotulo: "4 FATORES",
+    orientacao: "Faça o cliente identificar o real impeditivo.",
+    frase: "Entre interesse, tempo, metodologia e financeiro, algum fator impediria você de iniciar?",
+    nivel: "atencao",
+    etapa: "apresentacao",
+  },
+  validar_solucao: {
+    rotulo: "VALIDE A SOLUÇÃO",
+    orientacao: "Confirme aprovação antes de falar de valor.",
+    frase: "O que mais fez sentido para você?",
+    nivel: "atencao",
+    etapa: "gatilho",
+  },
+  isolar_financeiro: {
+    rotulo: "ISOLE O FINANCEIRO",
+    orientacao: "Confirme que só falta o investimento.",
+    frase: "Tirando a questão financeira, existe algum outro ponto que impediria você de começar?",
+    nivel: "aviso",
+    etapa: "gatilho",
+  },
   financeiro: {
-    rotulo: "Objeção financeira",
-    orientacao: "Isole antes de oferecer condição.",
-    frase: "Se o investimento não fosse uma questão, você começaria hoje?",
+    rotulo: "FINANCEIRO",
+    orientacao: "Isole antes de negociar. Não dê desconto.",
+    frase: "É o valor total ou a forma como esse valor entra no seu orçamento?",
     nivel: "alerta",
+    etapa: "fechamento",
   },
   tempo: {
-    rotulo: "Objeção de tempo",
-    orientacao: "Tempo é prioridade. Descubra o que vem antes.",
-    frase: "O que hoje está na frente disso na sua lista de prioridades?",
-    nivel: "alerta",
+    rotulo: "TEMPO",
+    orientacao: "Entenda se é agenda real ou medo de não dar conta.",
+    frase: "Como está sua rotina hoje numa semana normal?",
+    nivel: "aviso",
   },
   pensar: {
-    rotulo: "Adiamento de decisão",
-    orientacao: "Descubra o que ainda impede a decisão.",
-    frase: "Claro. O que especificamente você ainda precisa avaliar antes de decidir?",
+    rotulo: "PRECISA PENSAR",
+    orientacao: "Não responda a objeção ainda. Descubra a trava real.",
+    frase: "Quando você fala que precisa pensar, o que exatamente precisa avaliar?",
     nivel: "alerta",
   },
   segunda_opiniao: {
-    rotulo: "Terceiro decisor",
-    orientacao: "Descubra o papel real do terceiro.",
-    frase: "Se ela disser sim, você começa? O que ela precisaria ouvir?",
-    nivel: "alerta",
+    rotulo: "SEGUNDA OPINIÃO",
+    orientacao: "Descubra a participação real dessa pessoa na decisão.",
+    frase: "A decisão é de vocês dois ou ela te apoia no que você escolher?",
+    nivel: "aviso",
   },
   metodologia: {
-    rotulo: "Dúvida de metodologia",
-    orientacao: "Responda curto e volte ao diagnóstico.",
-    frase: "Te explico em um minuto — e por que isso é importante pra você?",
+    rotulo: "METODOLOGIA",
+    orientacao: "Entenda a expectativa antes de defender o método.",
+    frase: "O que te frustrou nas experiências anteriores com inglês?",
     nivel: "atencao",
   },
   interesse: {
-    rotulo: "Sinal de interesse",
+    rotulo: "INTERESSE",
     orientacao: "Aprofunde e amarre com as palavras dele.",
-    frase: "O que exatamente nisso mais fez sentido pra sua situação?",
+    frase: "O que exatamente nisso fez mais sentido pra sua situação?",
     nivel: "positivo",
   },
   intencao_compra: {
-    rotulo: "Intenção de compra",
-    orientacao: "Pare de vender. Avance para o próximo passo.",
-    frase: "Perfeito. Então vamos garantir sua vaga agora — te passo os detalhes.",
-    nivel: "positivo",
-  },
-  fechamento: {
-    rotulo: "Momento de fechar",
-    orientacao: "Convite direto, sem rodeio.",
+    rotulo: "SINAL DE COMPRA",
+    orientacao: "Pare de apresentar. Peça a decisão.",
     frase: "Faz sentido a gente começar hoje?",
     nivel: "positivo",
+  },
+  nao_negocie: {
+    rotulo: "NÃO NEGOCIE AINDA",
+    orientacao: "Confirme se esse é realmente o único impeditivo.",
+    frase: "Se essa questão fosse resolvida, você conseguiria avançar hoje?",
+    nivel: "alerta",
+    etapa: "fechamento",
+  },
+  pedido_decisao: {
+    rotulo: "PEÇA A DECISÃO",
+    orientacao: "Apresentou o valor: conduza o posicionamento.",
+    frase: "Faz sentido para você começar agora?",
+    nivel: "aviso",
+    etapa: "fechamento",
+  },
+  fechou: {
+    rotulo: "FECHOU",
+    orientacao: "Pare de argumentar e avance para a matrícula.",
+    frase: "Perfeito. Vou iniciar seu cadastro agora.",
+    nivel: "positivo",
+    etapa: "fechamento",
   },
 };
 
