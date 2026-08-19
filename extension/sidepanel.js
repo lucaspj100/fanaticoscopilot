@@ -52,7 +52,7 @@ els.endpoint.addEventListener("change", () => {
 });
 
 const STATUS_TEXT = {
-  ouvindo: "Ouvindo a call…",
+  ouvindo: "COPILOTO ATIVO — OUVINDO",
   falando: "Cliente falando…",
   transcrevendo: "Processando…",
 };
@@ -131,6 +131,7 @@ function renderCard(card) {
 
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === "COPILOT_ARMED") refreshArmState();
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_STATUS") {
@@ -143,6 +144,19 @@ chrome.runtime.onMessage.addListener((msg) => {
     while (els.transcript.children.length > 20) els.transcript.lastElementChild.remove();
   }
 });
+
+async function refreshArmState() {
+  try {
+    const st = await chrome.runtime.sendMessage({ type: "COPILOT_QUERY_STATE" });
+    if (!st?.ok || running) return;
+    els.status.textContent = st.armed
+      ? "Pronto. Clique em Iniciar para capturar esta aba."
+      : "Clique no ícone do United Copilot na barra do Chrome (com a aba do Zoom em foco) para autorizar a captura.";
+  } catch {
+    /* ignora */
+  }
+}
+refreshArmState();
 
 els.toggle.addEventListener("click", async () => {
   if (running) {
@@ -158,9 +172,9 @@ els.toggle.addEventListener("click", async () => {
   });
   if (res?.ok) {
     setRunning(true);
-    els.status.textContent = `Capturando: ${res.tabTitle}`;
+    els.status.textContent = `COPILOTO ATIVO — OUVINDO · ${res.tabTitle}`;
   } else {
-    els.status.textContent = `⚠ ${res?.error || "Falha ao iniciar."}`;
+    els.status.textContent = `⚠ ${res?.error || chrome.runtime.lastError?.message || "Falha ao iniciar."}`;
   }
 });
 
