@@ -32,29 +32,71 @@ function setRunning(on) {
   els.dot.classList.toggle("on", on);
 }
 
+// Prioridade comercial: só troca o card quando surge algo mais relevante.
+const PRIORIDADE = {
+  fechou: 100,
+  intencao_compra: 90,
+  nao_negocie: 85,
+  pensar: 80,
+  financeiro: 78,
+  segunda_opiniao: 74,
+  tempo: 70,
+  isolar_financeiro: 66,
+  pedido_decisao: 64,
+  validar_solucao: 60,
+  metodologia: 56,
+  quatro_fatores: 52,
+  falta_implicacao: 50,
+  aprofunde: 46,
+  criterio_compra: 44,
+  personalize: 40,
+  di_ausente: 36,
+  interesse: 34,
+  rapport_longo: 20,
+};
+
+const ETAPA_LABEL = {
+  rapport: "Rapport",
+  di: "Regra do jogo / D.I.",
+  spin: "Pré-speech / SPIN",
+  apresentacao: "Apresentação",
+  gatilho: "Gatilho de fechamento",
+  fechamento: "Fechamento",
+};
+
+let atual = null;
+
 function renderCard(card) {
-  // Substitui o card de regra pelo card da IA do mesmo tipo (refino).
-  const first = els.cards.firstElementChild;
-  if (first && first.dataset.tipo === card.tipo && first.dataset.fonte === "regra" && card.fonte === "ia") {
-    first.remove();
+  if (!card || card.tipo === "nenhum") return;
+
+  // Refino da IA sobre o card de regra do mesmo momento sempre entra.
+  const refino = atual && card.fonte === "ia" && atual.fonte === "regra";
+  if (atual && !refino && (PRIORIDADE[card.tipo] ?? 0) < (PRIORIDADE[atual.tipo] ?? 0) && card.fonte === "regra") {
+    return; // situação menos relevante: não rouba a tela do vendedor
   }
+
   const el = document.createElement("article");
   el.className = `card ${card.nivel || "alerta"}`;
-  el.dataset.tipo = card.tipo;
-  el.dataset.fonte = card.fonte || "ia";
   el.innerHTML = `
-    <div class="tag">${card.rotulo || card.tipo}</div>
+    <div class="tag">${card.rotulo || card.tipo}<span class="etapa">${ETAPA_LABEL[card.etapa] || ""}</span></div>
     <div class="orient"></div>
-    <div class="frase" title="Clique para copiar"></div>
+    <div class="frase-wrap" hidden>
+      <div class="frase-label">PERGUNTE:</div>
+      <div class="frase" title="Clique para copiar"></div>
+    </div>
     <div class="meta">${card.fonte === "regra" ? "regra instantânea" : "IA"} · ${card.ms ?? "?"} ms</div>`;
   el.querySelector(".orient").textContent = card.orientacao || "";
-  const frase = el.querySelector(".frase");
-  frase.textContent = card.frase ? `“${card.frase}”` : "";
-  frase.addEventListener("click", () => navigator.clipboard.writeText(card.frase || ""));
-  els.cards.prepend(el);
-  while (els.cards.children.length > 4) els.cards.lastElementChild.remove();
+  if (card.frase) {
+    el.querySelector(".frase-wrap").hidden = false;
+    const frase = el.querySelector(".frase");
+    frase.textContent = `“${card.frase}”`;
+    frase.addEventListener("click", () => navigator.clipboard.writeText(card.frase));
+  }
+  els.cards.replaceChildren(el); // no máximo UMA situação visível
+  atual = card;
   lastTipo = card.tipo;
 }
+
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
