@@ -2,15 +2,16 @@
  * United Copilot — pipeline de áudio (offscreen document).
  *
  * Aba do Zoom Web -> tabCapture -> PCM 16 kHz mono -> VAD por energia
- * -> WAV completo por turno de fala -> /api/public/transcribe
- * -> regra local (card instantâneo) -> /api/public/coach (refino da IA)
+ * -> transcrição PARCIAL enquanto o cliente ainda fala (pré-classificação)
+ * -> no fim da fala: card imediato (camada 1) + frase refinada pela IA (camada 2).
  */
 
 const TARGET_RATE = 16000;
-const SILENCE_MS = 550; // silêncio que fecha um turno de fala
-const MIN_SPEECH_MS = 700; // fala mínima para valer a pena transcrever
+const SILENCE_MS = 380; // silêncio que fecha um turno de fala (mais curto = alerta mais cedo)
+const MIN_SPEECH_MS = 600; // fala mínima para valer a pena transcrever
 const MAX_TURN_MS = 9000; // corta turnos muito longos para não estourar latência
 const RMS_THRESHOLD = 0.008;
+const PARTIAL_EVERY_MS = 1100; // envia parcial enquanto a pessoa fala
 
 let audioCtx = null;
 let stream = null;
@@ -23,6 +24,10 @@ let buffer = [];
 let speaking = false;
 let lastVoiceAt = 0;
 let speechStartedAt = 0;
+let lastPartialAt = 0;
+let partialInFlight = false;
+let preAlertTipo = null; // situação já alertada pela parcial deste turno
+let preAlertAt = null;
 const turns = []; // histórico curto enviado à IA
 
 function log(status, extra) {
@@ -36,25 +41,27 @@ function push(card) {
 /* ---------- camada 1: detecção instantânea por padrões ---------- */
 
 const RULES = [
-  ["financeiro", [/\b(caro|pre[çc]|valor|invest|or[çc]ament|dinheiro|grana|desconto|parcel|condi[çc])\w*/i, /n[ãa]o tenho (esse|como|dinheiro|verba)/i]],
-  ["tempo", [/n[ãa]o (tenho|teria) tempo/i, /\b(corrid[oa]|sem tempo|agenda cheia|mais pra frente|ano que vem)\w*/i, /agora n[ãa]o [ée] (o|um bom) momento/i]],
+  ["fechou", [/\b(vamos fechar|bora fechar|quero (come[çc]ar|fechar|me matricular)|fechado|t[ôo] dentro|me matricula)\b/i, /\b(sim,? (vamos|quero|pode))\b/i]],
+  ["intencao_compra", [/como (eu )?(fa[çc]o|posso) (para|pra) (come[çc]ar|contratar|assinar)/i, /\b(manda o link|onde (eu )?assino|qual o pr[óo]ximo passo)\b/i]],
   ["pensar", [/preciso pensar/i, /vou pensar/i, /pensar (a respeito|com calma|melhor)/i, /depois eu (te )?(retorno|aviso|falo)/i]],
+  ["financeiro", [/\b(caro|pre[çc]o|valor|invest|or[çc]ament|dinheiro|grana|desconto|parcel|condi[çc])\w*/i, /n[ãa]o tenho (esse|como|dinheiro|verba)/i]],
   ["segunda_opiniao", [/(minha|meu) (esposa|marido|s[óo]ci[ao]|companheir[ao]|chefe|gestor)/i, /preciso (consultar|alinhar|conversar com)/i, /n[ãa]o decido sozinh/i]],
+  ["tempo", [/n[ãa]o (tenho|teria|vou ter) tempo/i, /\b(corrid[oa]|sem tempo|agenda cheia|mais pra frente|ano que vem)\w*/i, /agora n[ãa]o [ée] (o|um bom) momento/i]],
   ["metodologia", [/como (funciona|que funciona|seria)/i, /qual (a|é a) (metodologia|m[ée]todo|din[âa]mica)/i, /\b(quanto tempo dura|garantia|funciona mesmo)\w*/i]],
   ["interesse", [/\b(gostei|interessante|faz sentido|adorei|curti)\b/i, /era isso que eu (precisava|queria)/i]],
-  ["intencao_compra", [/como (eu )?(fa[çc]o|posso) (para|pra) (come[çc]ar|contratar)/i, /\b(quero come[çc]ar|vamos fechar|onde (eu )?assino|manda o link)\b/i]],
-  ["fechamento", [/pr[óo]ximo passo/i, /fech(ado|amos)\b/i]],
+  ["aprofunde", [/\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i, /\b(quero|preciso) (aprender|falar|melhorar) (o )?ingl[êe]s\b/i]],
 ];
 
 const FALLBACKS = {
-  financeiro: { rotulo: "Objeção financeira", nivel: "alerta", orientacao: "Isole antes de oferecer condição.", frase: "Se o investimento não fosse uma questão, você começaria hoje?" },
-  tempo: { rotulo: "Objeção de tempo", nivel: "alerta", orientacao: "Tempo é prioridade. Descubra o que vem antes.", frase: "O que hoje está na frente disso na sua lista de prioridades?" },
-  pensar: { rotulo: "Adiamento de decisão", nivel: "alerta", orientacao: "Descubra o que ainda impede a decisão.", frase: "Claro. O que especificamente você ainda precisa avaliar antes de decidir?" },
-  segunda_opiniao: { rotulo: "Terceiro decisor", nivel: "alerta", orientacao: "Descubra o papel real do terceiro.", frase: "Se ela disser sim, você começa? O que ela precisaria ouvir?" },
-  metodologia: { rotulo: "Dúvida de metodologia", nivel: "atencao", orientacao: "Responda curto e volte ao diagnóstico.", frase: "Te explico em um minuto — e por que isso é importante pra você?" },
-  interesse: { rotulo: "Sinal de interesse", nivel: "positivo", orientacao: "Aprofunde e amarre com as palavras dele.", frase: "O que exatamente nisso mais fez sentido pra sua situação?" },
-  intencao_compra: { rotulo: "Intenção de compra", nivel: "positivo", orientacao: "Pare de vender. Avance para o próximo passo.", frase: "Perfeito. Vamos garantir sua vaga agora — te passo os detalhes." },
-  fechamento: { rotulo: "Momento de fechar", nivel: "positivo", orientacao: "Convite direto, sem rodeio.", frase: "Faz sentido a gente começar hoje?" },
+  fechou: { rotulo: "FECHOU", nivel: "positivo", orientacao: "Pare de argumentar e avance para a matrícula.", etapa: "fechamento" },
+  intencao_compra: { rotulo: "SINAL DE COMPRA", nivel: "positivo", orientacao: "Pare de apresentar. Peça a decisão.", etapa: "fechamento" },
+  pensar: { rotulo: "PRECISA PENSAR", nivel: "alerta", orientacao: "Descubra a trava real antes de responder." },
+  financeiro: { rotulo: "FINANCEIRO", nivel: "alerta", orientacao: "Isole antes de negociar. Sem desconto.", etapa: "fechamento" },
+  segunda_opiniao: { rotulo: "SEGUNDA OPINIÃO", nivel: "aviso", orientacao: "Descubra o papel real dessa pessoa na decisão." },
+  tempo: { rotulo: "TEMPO", nivel: "aviso", orientacao: "Entenda se é agenda real ou medo de não dar conta." },
+  metodologia: { rotulo: "METODOLOGIA", nivel: "atencao", orientacao: "Entenda a expectativa antes de defender o método." },
+  interesse: { rotulo: "INTERESSE", nivel: "positivo", orientacao: "Aprofunde com as palavras dele." },
+  aprofunde: { rotulo: "APROFUNDE", nivel: "atencao", orientacao: "A resposta ainda está superficial." },
 };
 
 function detect(text) {
@@ -95,11 +102,44 @@ function downsample(input, fromRate) {
   return out;
 }
 
-/* ---------- pipeline ---------- */
+/* ---------- camada 1 antecipada: parcial enquanto o cliente fala ---------- */
+
+async function sendPartial(chunks) {
+  partialInFlight = true;
+  try {
+    const blob = encodeWav(chunks, TARGET_RATE);
+    if (blob.size < 6000) return;
+    const form = new FormData();
+    form.append("file", blob, "recording.wav");
+    const data = await apiFetch("/api/public/transcribe", { method: "POST", body: form });
+    const text = (data.text || "").trim();
+    if (!text || !speaking) return;
+
+    const quick = detect(text);
+    if (quick && quick.tipo !== preAlertTipo) {
+      preAlertTipo = quick.tipo;
+      preAlertAt = performance.now();
+      // Camada 1: tipo + orientação apenas. A frase vem depois, da IA.
+      push({ ...quick, fonte: "regra", parcial: true, ms: 0 });
+      chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: 0, parcial: true }).catch(() => {});
+    }
+  } catch {
+    /* parcial é best-effort: nunca quebra o turno */
+  } finally {
+    partialInFlight = false;
+  }
+}
+
+/* ---------- pipeline do turno completo ---------- */
 
 async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   // t = tempo medido a partir do FIM REAL da fala do cliente
   const t = (ts) => Math.round((ts ?? performance.now()) - speechEndAt);
+
+  const alertadoAntes = preAlertTipo;
+  const preAlertaMs = preAlertAt != null ? Math.round(preAlertAt - speechEndAt) : null;
+  preAlertTipo = null;
+  preAlertAt = null;
 
   const timing = {
     vad: Math.round(vadDetectedAt - speechEndAt),
@@ -108,7 +148,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     stt: 0,
     classificacao: 0,
     ia: 0,
-    primeiroAlerta: null,
+    primeiroAlerta: preAlertaMs != null ? Math.min(0, preAlertaMs) : null,
     total: null,
   };
   const emit = () => chrome.runtime.sendMessage({ type: "COPILOT_TIMING", timing: { ...timing } }).catch(() => {});
@@ -139,20 +179,20 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
 
   chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t() }).catch(() => {});
 
-  // Camada 1 — card imediato (regra local)
+  // Camada 1 — card imediato (regra local), se ainda não apareceu na parcial
   const classStart = performance.now();
   const quick = detect(text);
   timing.classificacao = Math.round(performance.now() - classStart);
-  if (quick) {
-    timing.primeiroAlerta = t();
-    push({ ...quick, fonte: "regra", ms: timing.primeiroAlerta });
+  if (quick && quick.tipo !== alertadoAntes) {
+    if (timing.primeiroAlerta == null) timing.primeiroAlerta = t();
+    push({ ...quick, fonte: "regra", ms: t() });
   }
   emit();
 
   turns.push({ speaker: "cliente", text });
   while (turns.length > 4) turns.shift();
 
-  // Camada 2 — refino pela IA (só quando há gatilho ou fala relevante)
+  // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
   if (!quick && text.split(/\s+/).length < 6) { log("ouvindo"); return; }
 
   const iaStart = performance.now();
@@ -160,7 +200,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     const card = await apiFetch("/api/public/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ turns }),
+      body: JSON.stringify({ turns, tipo: quick?.tipo, etapa: quick?.etapa }),
     });
     timing.ia = Math.round(performance.now() - iaStart);
     if (card.tipo && card.tipo !== "nenhum") {
@@ -176,7 +216,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
 }
 
 
-// ---- Diagnóstico de rede (temporário, para validação do MVP) ----
+// ---- Diagnóstico de rede ----
 function netReport(info) {
   chrome.runtime.sendMessage({ type: "COPILOT_NET", net: info }).catch(() => {});
 }
@@ -233,7 +273,14 @@ async function start(streamId, ep) {
     const now = performance.now();
 
     if (rms > RMS_THRESHOLD) {
-      if (!speaking) { speaking = true; speechStartedAt = now; log("falando"); }
+      if (!speaking) {
+        speaking = true;
+        speechStartedAt = now;
+        lastPartialAt = now;
+        preAlertTipo = null;
+        preAlertAt = null;
+        log("falando");
+      }
       lastVoiceAt = now;
       buffer.push(downsample(input, audioCtx.sampleRate));
     } else if (speaking) {
@@ -244,6 +291,12 @@ async function start(streamId, ep) {
         if (lastVoiceAt - speechStartedAt >= MIN_SPEECH_MS) flush(lastVoiceAt);
         else buffer = [];
       }
+    }
+
+    // Streaming: manda o que já foi falado, sem esperar o fim da fala.
+    if (speaking && !partialInFlight && now - lastPartialAt > PARTIAL_EVERY_MS && now - speechStartedAt > 900) {
+      lastPartialAt = now;
+      sendPartial(buffer.slice());
     }
 
     if (speaking && now - speechStartedAt > MAX_TURN_MS) {
@@ -263,6 +316,8 @@ function stop() {
   running = false;
   speaking = false;
   buffer = [];
+  preAlertTipo = null;
+  partialInFlight = false;
   try { processor?.disconnect(); source?.disconnect(); } catch {}
   stream?.getTracks().forEach((t) => t.stop());
   audioCtx?.close().catch(() => {});
