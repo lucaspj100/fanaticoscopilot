@@ -69,7 +69,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 },
               ],
               response_format: { type: "json_object" },
-              max_tokens: 200,
+              max_tokens: 600,
               temperature: 0.3,
             }),
           });
