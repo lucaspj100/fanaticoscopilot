@@ -7,7 +7,39 @@ const els = {
   transcript: document.getElementById("transcript"),
   endpoint: document.getElementById("endpoint"),
   dot: document.getElementById("dot"),
+  diag: document.getElementById("diag"),
+  diagTotal: document.getElementById("diag-total"),
+  diagFirst: document.getElementById("diag-first"),
+  diagFull: document.getElementById("diag-full"),
 };
+
+const ETAPAS_DIAG = [
+  ["vad", "VAD / fim de fala"],
+  ["prep", "Preparo + envio do áudio"],
+  ["upload", "Rede (upload)"],
+  ["stt", "Speech-to-Text"],
+  ["classificacao", "Classificação"],
+  ["ia", "IA (sugestão)"],
+];
+
+const fmt = (ms) => (ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms} ms`);
+
+function renderTiming(t) {
+  els.diag.replaceChildren(
+    ...ETAPAS_DIAG.map(([k, label]) => {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = fmt(t[k]);
+      li.append(label, b);
+      return li;
+    }),
+  );
+  els.diagTotal.textContent = t.total != null ? `· TOTAL ${fmt(t.total)}` : "";
+  els.diagFirst.textContent = fmt(t.primeiroAlerta);
+  els.diagFull.textContent = fmt(t.total);
+  els.diagFirst.classList.toggle("slow", (t.primeiroAlerta ?? 0) > 1000);
+  els.diagFull.classList.toggle("slow", (t.total ?? 0) > 3000);
+}
 
 let running = false;
 let lastTipo = null;
@@ -100,6 +132,7 @@ function renderCard(card) {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
+  if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_STATUS") {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }
