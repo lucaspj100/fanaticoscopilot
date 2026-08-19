@@ -119,7 +119,7 @@ export const Route = createFileRoute("/api/public/coach")({
         } catch (e) {
           if (quick) {
             return Response.json(
-              { ...quick, fonte: "regra", ms: Date.now() - started, aviso: "Falha na IA" },
+              { ...quick, fonte: "regra", ms: Date.now() - started, aviso: `Falha na IA: ${e instanceof Error ? e.message : String(e)}` },
               { headers: CORS },
             );
           }
