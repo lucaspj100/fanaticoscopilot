@@ -214,15 +214,17 @@ async function start(streamId, ep) {
       buffer.push(downsample(input, audioCtx.sampleRate));
       if (now - lastVoiceAt > SILENCE_MS) {
         speaking = false;
-        if (now - speechStartedAt >= MIN_SPEECH_MS) flush();
+        // fim real da fala = último frame com voz
+        if (lastVoiceAt - speechStartedAt >= MIN_SPEECH_MS) flush(lastVoiceAt);
         else buffer = [];
       }
     }
 
     if (speaking && now - speechStartedAt > MAX_TURN_MS) {
       speaking = false;
-      flush();
+      flush(now);
     }
+
   };
 
   source.connect(processor);
