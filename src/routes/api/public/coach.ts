@@ -19,6 +19,15 @@ const Body = z.object({
 });
 
 const VALID: SignalType[] = [
+  "rapport_longo",
+  "di_ausente",
+  "aprofunde",
+  "falta_implicacao",
+  "criterio_compra",
+  "personalize",
+  "quatro_fatores",
+  "validar_solucao",
+  "isolar_financeiro",
   "financeiro",
   "tempo",
   "pensar",
@@ -26,9 +35,14 @@ const VALID: SignalType[] = [
   "metodologia",
   "interesse",
   "intencao_compra",
-  "fechamento",
+  "nao_negocie",
+  "pedido_decisao",
+  "fechou",
   "nenhum",
 ];
+
+const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
+
 
 export const Route = createFileRoute("/api/public/coach")({
   server: {
