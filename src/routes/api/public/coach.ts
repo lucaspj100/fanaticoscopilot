@@ -46,7 +46,7 @@ export const Route = createFileRoute("/api/public/coach")({
         }
 
         const last = parsed.turns[parsed.turns.length - 1];
-        const quick = detect(last.text);
+        const quick = last ? detect(last.text) : null;
 
         if (!key) {
           return Response.json({ error: "AI não configurada." }, { status: 500, headers: CORS });
