@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>United Copilot</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="dot" id="dot"></span>
+        <strong>UNITED COPILOT</strong>
+      </div>
+      <button id="toggle">Iniciar</button>
+    </header>
+
+    <p class="status" id="status">Abra a call em app.zoom.us, volte para esta aba e clique em Iniciar.</p>
+
+    <main id="cards"></main>
+
+    <section class="transcript">
+      <h2>Transcrição</h2>
+      <ul id="transcript"></ul>
+    </section>
+
+    <footer>
+      <label for="endpoint">Servidor</label>
+      <input id="endpoint" type="url" spellcheck="false" />
+    </footer>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
