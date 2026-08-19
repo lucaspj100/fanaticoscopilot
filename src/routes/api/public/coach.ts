@@ -68,6 +68,7 @@ export const Route = createFileRoute("/api/public/coach")({
 
         const transcript = parsed.turns.map((t) => `${t.speaker.toUpperCase()}: ${t.text}`).join("\n");
 
+        const upstreamStart = Date.now();
         try {
           const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
@@ -131,6 +132,8 @@ export const Route = createFileRoute("/api/public/coach")({
               frase: (out.frase ?? "").trim() || base.frase,
               fonte: "ia",
               ms: Date.now() - started,
+              // iaMs = tempo do modelo; o resto da diferença é rede/servidor
+              iaMs: Date.now() - upstreamStart,
             },
 
             { headers: CORS },
