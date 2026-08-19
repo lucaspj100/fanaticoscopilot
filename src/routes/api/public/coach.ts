@@ -103,7 +103,7 @@ export const Route = createFileRoute("/api/public/coach")({
                   }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
                 },
               ],
-              max_tokens: 60,
+              max_tokens: 160,
               temperature: 0.7,
             }),
           });
@@ -116,7 +116,9 @@ export const Route = createFileRoute("/api/public/coach")({
           }
 
           const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-          const frase = clean(data.choices?.[0]?.message?.content ?? "");
+          const raw = clean(data.choices?.[0]?.message?.content ?? "");
+          // Saída truncada/vazia cai na frase do playbook.
+          const frase = raw.length >= 12 ? raw : "";
 
           return Response.json(
             {
