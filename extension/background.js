@@ -1,8 +1,46 @@
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+/**
+ * United Copilot — service worker.
+ *
+ * Fluxo de autorização (MV3):
+ * o clique no ÍCONE da extensão é a ação explícita que concede activeTab
+ * para a aba do Zoom. Guardamos essa aba como "armada" e abrimos o Side Panel.
+ * O botão Iniciar do painel usa essa autorização para chamar tabCapture.
+ */
+
+// Precisamos receber o onClicked para ganhar activeTab, então o painel
+// é aberto manualmente dentro do handler (também é um gesto do usuário).
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+
+/** tabId -> timestamp em que o activeTab foi concedido */
+const armed = new Map();
+
+function arm(tabId) {
+  armed.set(tabId, Date.now());
+}
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+  arm(tab.id);
+  try {
+    await chrome.sidePanel.open({ tabId: tab.id });
+  } catch {
+    try {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+    } catch {
+      /* ignora */
+    }
+  }
+  chrome.runtime.sendMessage({ type: "COPILOT_ARMED", tabId: tab.id, url: tab.url }).catch(() => {});
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => armed.delete(tabId));
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  // navegação revoga o activeTab concedido
+  if (info.url) armed.delete(tabId);
+});
 
 async function ensureOffscreen() {
-  const has = await chrome.offscreen.hasDocument();
-  if (has) return;
+  if (await chrome.offscreen.hasDocument()) return;
   await chrome.offscreen.createDocument({
     url: "offscreen.html",
     reasons: ["USER_MEDIA"],
@@ -10,14 +48,68 @@ async function ensureOffscreen() {
   });
 }
 
+function getMediaStreamId(targetTabId) {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.tabCapture.getMediaStreamId({ targetTabId }, (streamId) => {
+        const err = chrome.runtime.lastError;
+        if (err || !streamId) reject(new Error(err?.message || "streamId vazio"));
+        else resolve(streamId);
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function pickTargetTab() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  return tab;
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "COPILOT_QUERY_STATE") {
+    (async () => {
+      const tab = await pickTargetTab();
+      sendResponse({
+        ok: true,
+        tabId: tab?.id ?? null,
+        tabTitle: tab?.title || "",
+        url: tab?.url || "",
+        armed: tab?.id != null && armed.has(tab.id),
+      });
+    })();
+    return true;
+  }
+
   if (msg?.type === "COPILOT_START") {
     (async () => {
       try {
-        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const tab = await pickTargetTab();
         if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
+
+        const url = tab.url || "";
+        if (/^(chrome|edge|about|devtools|chrome-extension):/i.test(url)) {
+          throw new Error("Páginas internas do Chrome não podem ser capturadas. Abra a aba do Zoom.");
+        }
+
+        if (!armed.has(tab.id)) {
+          throw new Error(
+            "Autorização pendente: clique no ÍCONE do United Copilot na barra do Chrome com a aba do Zoom aberta e tente Iniciar novamente.",
+          );
+        }
+
         await ensureOffscreen();
-        const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+
+        let streamId;
+        try {
+          streamId = await getMediaStreamId(tab.id);
+        } catch (e) {
+          throw new Error(
+            `chrome.tabCapture falhou: ${e.message}. Clique no ícone da extensão na barra do Chrome (com a aba do Zoom em foco) e tente novamente.`,
+          );
+        }
+
         await chrome.runtime.sendMessage({
           type: "OFFSCREEN_START",
           streamId,
