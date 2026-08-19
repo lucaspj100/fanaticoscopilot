@@ -103,7 +103,7 @@ export const Route = createFileRoute("/api/public/coach")({
                   }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
                 },
               ],
-              max_tokens: 160,
+              max_tokens: 800,
               temperature: 0.7,
             }),
           });
