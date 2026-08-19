@@ -1,4 +1,6 @@
-const DEFAULT_ENDPOINT = "https://id-preview--ca4edc97-ed9d-42d0-af3c-3c6e44cfad3b.lovable.app";
+const DEFAULT_ENDPOINT = "https://fanaticoscopilot.lovable.app";
+// URLs de preview do Lovable exigem sessão e não são acessíveis por uma extensão.
+const isPreviewUrl = (u) => /id-preview--|lovableproject\.com/.test(u || "");
 
 const els = {
   toggle: document.getElementById("toggle"),
@@ -45,7 +47,9 @@ let running = false;
 let lastTipo = null;
 
 chrome.storage.local.get(["endpoint"]).then(({ endpoint }) => {
-  els.endpoint.value = endpoint || DEFAULT_ENDPOINT;
+  const url = !endpoint || isPreviewUrl(endpoint) ? DEFAULT_ENDPOINT : endpoint;
+  els.endpoint.value = url;
+  chrome.storage.local.set({ endpoint: url });
 });
 els.endpoint.addEventListener("change", () => {
   chrome.storage.local.set({ endpoint: els.endpoint.value.trim() });
