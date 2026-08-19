@@ -81,9 +81,10 @@ function CopilotCard({ card }: { card: Card }) {
           </div>
           <p className="mt-1 rounded-lg border border-dashed border-border bg-background px-3 py-2 text-base">
             “{card.frase}”
-
-        </p>
+          </p>
+        </div>
       )}
+
       <p className="mt-2 text-[11px] text-muted-foreground">
         {card.fonte === "regra" ? "regra instantânea" : "IA + playbook"}
         {card.ms != null && ` · ${card.ms} ms`}
