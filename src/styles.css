@@ -38,6 +38,7 @@
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
   --color-alerta: var(--alerta);
+  --color-aviso: var(--aviso);
   --color-atencao: var(--atencao);
   --color-positivo: var(--positivo);
   --color-surface: var(--surface);
@@ -79,6 +80,7 @@
   --input: oklch(0.31 0.026 250);
   --ring: oklch(0.79 0.16 74);
   --alerta: oklch(0.65 0.22 25);
+  --aviso: oklch(0.72 0.19 50);
   --atencao: oklch(0.8 0.16 75);
   --positivo: oklch(0.76 0.17 158);
   --chart-1: oklch(0.79 0.16 74);
