@@ -93,12 +93,80 @@ function CopilotCard({ card }: { card: Card }) {
   );
 }
 
+type Timing = {
+  vad: number | null;
+  prep: number | null;
+  stt: number | null;
+  rede: number;
+  classificacao: number;
+  ia: number | null;
+  primeiroAlerta: number | null;
+  total: number | null;
+};
+
+const fmt = (ms: number | null) =>
+  ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`;
+
+function Diagnostico({ t }: { t: Timing }) {
+  const linhas: Array<[string, number | null, string?]> = [
+    ["VAD / fim de fala", t.vad, "só na extensão (áudio real)"],
+    ["Preparo + envio do áudio", t.prep, "só na extensão (áudio real)"],
+    ["Speech-to-Text", t.stt, "só na extensão (áudio real)"],
+    ["Classificação (regra local)", t.classificacao],
+    ["IA (modelo)", t.ia],
+    ["Rede + servidor", t.rede],
+  ];
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-muted-foreground">
+        Diagnóstico de latência
+      </div>
+      <ul className="mt-3 space-y-1.5">
+        {linhas.map(([label, ms, nota]) => (
+          <li key={label} className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">
+              {label}
+              {ms == null && nota && <span className="ml-1 text-[10px] uppercase tracking-wide">· {nota}</span>}
+            </span>
+            <span className="font-bold tabular-nums">{fmt(ms)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Até o 1º alerta
+          </div>
+          <div
+            className={`text-2xl font-black tabular-nums ${
+              (t.primeiroAlerta ?? 0) > 1000 ? "text-alerta" : "text-positivo"
+            }`}
+          >
+            {fmt(t.primeiroAlerta)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Até a sugestão completa
+          </div>
+          <div
+            className={`text-2xl font-black tabular-nums ${(t.total ?? 0) > 3000 ? "text-alerta" : "text-positivo"}`}
+          >
+            {fmt(t.total)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Simulador() {
   const [text, setText] = useState(EXEMPLOS[0] ?? "");
   const [instant, setInstant] = useState<Card | null>(null);
   const [ia, setIa] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [timing, setTiming] = useState<Timing | null>(null);
 
   async function run(input: string) {
     const frase = input.trim();
@@ -106,18 +174,45 @@ function Simulador() {
     setErro(null);
     setIa(null);
     const t0 = performance.now();
+    const classStart = performance.now();
     const quick = detect(frase);
-    setInstant(quick ? { ...quick, fonte: "regra", ms: Math.round(performance.now() - t0) } : null);
+    const classificacao = performance.now() - classStart;
+    const primeiroAlerta = quick ? performance.now() - t0 : null;
+    setInstant(quick ? { ...quick, fonte: "regra", ms: Math.round(primeiroAlerta ?? 0) } : null);
+    setTiming({
+      vad: null,
+      prep: null,
+      stt: null,
+      rede: 0,
+      classificacao,
+      ia: null,
+      primeiroAlerta,
+      total: null,
+    });
     setLoading(true);
     try {
+      const iaStart = performance.now();
       const res = await fetch("/api/public/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ turns: [{ speaker: "cliente", text: frase }] }),
       });
       const data = await res.json();
+      const roundTrip = performance.now() - iaStart;
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      if (data.tipo && data.tipo !== "nenhum") setIa({ ...data, ms: Math.round(performance.now() - t0) });
+      const total = performance.now() - t0;
+      const iaMs = Math.min(roundTrip, data.iaMs ?? roundTrip);
+      setTiming({
+        vad: null,
+        prep: null,
+        stt: null,
+        rede: Math.max(0, roundTrip - iaMs),
+        classificacao,
+        ia: iaMs,
+        primeiroAlerta: primeiroAlerta ?? total,
+        total,
+      });
+      if (data.tipo && data.tipo !== "nenhum") setIa({ ...data, ms: Math.round(total) });
       else setErro("Nenhum sinal comercial relevante nessa fala.");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro inesperado");
@@ -176,10 +271,12 @@ function Simulador() {
         {ia && <CopilotCard card={ia} />}
         {loading && <p className="text-xs text-muted-foreground">Refinando com o playbook…</p>}
         {erro && <p className="text-xs text-alerta">{erro}</p>}
+        {timing && <Diagnostico t={timing} />}
       </div>
     </div>
   );
 }
+
 
 function baixarExtensao() {
   fetch("/united-copilot.zip")
