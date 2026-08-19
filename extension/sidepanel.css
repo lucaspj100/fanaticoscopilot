@@ -5,8 +5,10 @@
   --text: #eef4fa;
   --muted: #7f95a8;
   --alerta: #ff4d4d;
+  --aviso: #ff8a3d;
   --atencao: #ffb020;
   --positivo: #21d07a;
+
 }
 
 * { box-sizing: border-box; }
