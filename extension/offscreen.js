@@ -97,14 +97,31 @@ function downsample(input, fromRate) {
 
 /* ---------- pipeline ---------- */
 
-async function processTurn(chunks) {
+async function processTurn(chunks, speechEndAt, vadDetectedAt) {
+  // t = tempo medido a partir do FIM REAL da fala do cliente
+  const t = (ts) => Math.round((ts ?? performance.now()) - speechEndAt);
+
+  const timing = {
+    vad: Math.round(vadDetectedAt - speechEndAt),
+    prep: 0,
+    upload: 0,
+    stt: 0,
+    classificacao: 0,
+    ia: 0,
+    primeiroAlerta: null,
+    total: null,
+  };
+  const emit = () => chrome.runtime.sendMessage({ type: "COPILOT_TIMING", timing: { ...timing } }).catch(() => {});
+
+  const prepStart = performance.now();
   const blob = encodeWav(chunks, TARGET_RATE);
   if (blob.size < 4096) return;
+  timing.prep = Math.round(performance.now() - prepStart);
 
-  const t0 = performance.now();
   log("transcrevendo");
 
   let text = "";
+  const sttStart = performance.now();
   try {
     const form = new FormData();
     form.append("file", blob, "recording.wav");
@@ -112,18 +129,27 @@ async function processTurn(chunks) {
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     text = (data.text || "").trim();
+    const roundTrip = Math.round(performance.now() - sttStart);
+    timing.stt = Math.min(roundTrip, data.sttMs ?? roundTrip);
+    timing.upload = Math.max(0, roundTrip - timing.stt);
   } catch (e) {
     log("erro", { error: `Transcrição: ${e.message}` });
     return;
   }
 
-  if (!text || text.length < 4) { log("ouvindo"); return; }
+  if (!text || text.length < 4) { log("ouvindo"); emit(); return; }
 
-  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: Math.round(performance.now() - t0) }).catch(() => {});
+  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t() }).catch(() => {});
 
-  // Camada 1 — card imediato
+  // Camada 1 — card imediato (regra local)
+  const classStart = performance.now();
   const quick = detect(text);
-  if (quick) push({ ...quick, fonte: "regra", ms: Math.round(performance.now() - t0) });
+  timing.classificacao = Math.round(performance.now() - classStart);
+  if (quick) {
+    timing.primeiroAlerta = t();
+    push({ ...quick, fonte: "regra", ms: timing.primeiroAlerta });
+  }
+  emit();
 
   turns.push({ speaker: "cliente", text });
   while (turns.length > 4) turns.shift();
@@ -131,6 +157,7 @@ async function processTurn(chunks) {
   // Camada 2 — refino pela IA (só quando há gatilho ou fala relevante)
   if (!quick && text.split(/\s+/).length < 6) { log("ouvindo"); return; }
 
+  const iaStart = performance.now();
   try {
     const res = await fetch(`${endpoint}/api/public/coach`, {
       method: "POST",
@@ -138,21 +165,26 @@ async function processTurn(chunks) {
       body: JSON.stringify({ turns }),
     });
     const card = await res.json();
+    timing.ia = Math.round(performance.now() - iaStart);
     if (res.ok && card.tipo && card.tipo !== "nenhum") {
-      push({ ...card, ms: Math.round(performance.now() - t0) });
+      timing.total = t();
+      if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
+      push({ ...card, ms: timing.total });
     }
+    emit();
   } catch (e) {
     log("erro", { error: `IA: ${e.message}` });
   }
   log("ouvindo");
 }
 
-function flush() {
+function flush(speechEndAt) {
   if (!buffer.length) return;
   const chunks = buffer;
   buffer = [];
-  processTurn(chunks);
+  processTurn(chunks, speechEndAt ?? performance.now(), performance.now());
 }
+
 
 async function start(streamId, ep) {
   endpoint = String(ep || "").replace(/\/+$/, "");
