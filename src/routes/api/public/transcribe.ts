@@ -39,6 +39,7 @@ export const Route = createFileRoute("/api/public/transcribe")({
         upstream.append("file", file, "recording.wav");
         upstream.append("language", "pt");
 
+        const upstreamStart = Date.now();
         const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
           method: "POST",
           headers: { Authorization: `Bearer ${key}` },
@@ -54,7 +55,8 @@ export const Route = createFileRoute("/api/public/transcribe")({
         }
 
         const data = (await res.json()) as { text?: string };
-        return Response.json({ text: data.text ?? "" }, { headers: CORS });
+        // sttMs = tempo gasto no provedor de STT (permite separar rede/upload no cliente)
+        return Response.json({ text: data.text ?? "", sttMs: Date.now() - upstreamStart }, { headers: CORS });
       },
     },
   },
