@@ -16,6 +16,7 @@ const els = {
   net: document.getElementById("net"),
   diagToggle: document.getElementById("diag-toggle"),
   diagPanel: document.getElementById("diag-panel"),
+  decision: document.getElementById("decision"),
 };
 
 /* ---------- modos: CALL (padrão) x DIAGNÓSTICO ---------- */
@@ -76,6 +77,27 @@ function renderNet(n) {
   );
 }
 
+function renderDecision(d) {
+  const linhas = [["Decisão", d.decisao || "—"]];
+  if (d.confianca != null) linhas.push(["Confiança", String(d.confianca)]);
+  if (d.tipo) linhas.push(["type", d.tipo]);
+  if (d.etapa) linhas.push(["stage", d.etapa]);
+  if (d.orientacao) linhas.push(["orientation", d.orientacao]);
+  if (d.frase) linhas.push(["suggested_phrase", d.frase]);
+  if (d.motivo) linhas.push(["Motivo", d.motivo]);
+  if (d.aviso) linhas.push(["Aviso", d.aviso]);
+  if (d.debug) linhas.push(["payload", JSON.stringify(d.debug).slice(0, 400)]);
+  els.decision.replaceChildren(
+    ...linhas.map(([label, value]) => {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = value;
+      li.append(label, b);
+      return li;
+    }),
+  );
+}
+
 let running = false;
 
 chrome.storage.local.get(["endpoint"]).then(({ endpoint }) => {
@@ -118,6 +140,8 @@ const GRUPO = {
   validar_solucao: 3,
   quatro_fatores: 3,
   aprofunde: 2,
+  aprofunde_objetivo: 2,
+  falta_problema: 2,
   falta_implicacao: 2,
   interesse: 2,
   personalize: 1,
@@ -200,6 +224,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);
+  if (msg?.type === "COPILOT_DECISION") renderDecision(msg.decision);
   if (msg?.type === "COPILOT_STATUS") {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }

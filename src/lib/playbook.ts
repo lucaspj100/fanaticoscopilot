@@ -104,7 +104,7 @@ REGRAS ABSOLUTAS
 - Siga estritamente o Playbook United abaixo. Você não é um assistente genérico.
 
 TIPOS PERMITIDOS:
-rapport_longo, di_ausente, aprofunde, falta_implicacao, criterio_compra, personalize, quatro_fatores,
+rapport_longo, di_ausente, aprofunde, aprofunde_objetivo, falta_problema, falta_implicacao, criterio_compra, personalize, quatro_fatores,
 validar_solucao, isolar_financeiro, financeiro, tempo, pensar, segunda_opiniao, metodologia,
 interesse, intencao_compra, nao_negocie, pedido_decisao, fechou, nenhum
 
@@ -140,6 +140,10 @@ REGRAS:
 export const RULE_SNIPPETS: Record<string, string> = {
   rapport_longo: "A conexão já foi criada. Faça a transição do rapport para a entrevista.",
   di_ausente: "D.I.: alinhe que ao final haverá um posicionamento claro, sim ou não. Não force compra.",
+  aprofunde_objetivo:
+    "O objetivo está genérico. Torne concreto: o que precisa acontecer na prática para ele chegar lá.",
+  falta_problema:
+    "Ele falou de objetivo, mas não do problema. Descubra onde exatamente o inglês limita hoje.",
   aprofunde: "A resposta está superficial. Peça o detalhe concreto por trás do que ele disse.",
   falta_implicacao:
     "Implicação: explore a consequência real do problema (oportunidades perdidas, dinheiro, carreira, frustração, tempo).",
@@ -160,3 +164,33 @@ export const RULE_SNIPPETS: Record<string, string> = {
   pedido_decisao: "Valor apresentado: conduza o posicionamento com um convite direto.",
   fechou: "Cliente disse sim: PARE DE VENDER. Avance para o cadastro/matrícula.",
 };
+
+
+/* ------------------------------------------------------------------
+ * CAMADA 1.5 — classificação por IA quando nenhuma regra local bate.
+ * Devolve a próxima melhor ação (ou "nenhum") em JSON estrito.
+ * ------------------------------------------------------------------ */
+
+export const CLASSIFY_SYSTEM = `
+Você é o motor de decisão do United Copilot (pt-BR). Recebe os últimos turnos de uma call de vendas
+e decide qual é a PRÓXIMA MELHOR AÇÃO do vendedor. O cliente não te vê.
+
+Procure nesta ordem de prioridade:
+1. fechou / intencao_compra (sinal de compra)
+2. objeção: financeiro, pensar, segunda_opiniao, tempo, metodologia
+3. pergunta direta do cliente
+4. falta de profundidade no SPIN: aprofunde, falta_problema
+5. oportunidade de implicação: falta_implicacao
+6. objetivo pouco específico: aprofunde_objetivo
+7. critério de compra ainda não explorado: criterio_compra
+8. alerta de processo: rapport_longo, di_ausente, personalize, quatro_fatores, validar_solucao, isolar_financeiro, pedido_decisao, nao_negocie
+
+Se o cliente falou algo comercialmente relevante (objetivo, carreira, dinheiro, frustração, dúvida),
+SEMPRE existe uma próxima pergunta útil — não devolva "nenhum".
+Só devolva "nenhum" para conversa fiada, saudação, ruído ou fala do vendedor.
+
+Responda SOMENTE JSON válido:
+{"tipo":"...","etapa":"rapport|di|spin|apresentacao|gatilho|fechamento","orientacao":"até 10 palavras, imperativo","frase":"pergunta curta, máx 18 palavras, fala humana","confianca":0.0}
+
+A frase deve usar as palavras do cliente, ser natural e curta. Nunca ofereça desconto, preço ou prazo.
+`.trim();

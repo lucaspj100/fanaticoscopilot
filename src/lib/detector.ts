@@ -11,6 +11,8 @@ export type SignalType =
   | "rapport_longo"
   | "di_ausente"
   | "aprofunde"
+  | "aprofunde_objetivo"
+  | "falta_problema"
   | "falta_implicacao"
   | "criterio_compra"
   | "personalize"
@@ -112,6 +114,24 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
     ],
   },
   {
+    tipo: "aprofunde_objetivo",
+    patterns: [
+      /\b(ganhar|receber|faturar|salário|sal[áa]rio) em (d[óo]lar|euro|moeda)/i,
+      /\b(trabalhar|morar|viajar) (fora|no exterior|nos eua|em outro pa[íi]s)/i,
+      /\b(empresa|vaga|cliente|projeto)s? (de|do) (fora|exterior)/i,
+      /\bquero (ganhar|conquistar|chegar|alcan[çc]ar)\b/i,
+    ],
+  },
+  {
+    tipo: "falta_problema",
+    patterns: [
+      /\b(progredir|crescer|evoluir|avan[çc]ar|subir) (na|de|no) (carreira|cargo|n[íi]vel|empresa)/i,
+      /\b(quest[ãa]o|motivo|lado) profissional\b/i,
+      /\b(melhorar|crescer|evoluir) profissionalmente\b/i,
+      /\b(promo[çc][ãa]o|pr[óo]ximo n[íi]vel|nova oportunidade|mudar de [áa]rea)\b/i,
+    ],
+  },
+  {
     tipo: "aprofunde",
     patterns: [
       /\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i,
@@ -135,6 +155,20 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
     frase: "Ao final da nossa conversa, você me diz se faz sentido ou não, tudo bem?",
     nivel: "atencao",
     etapa: "di",
+  },
+  aprofunde_objetivo: {
+    rotulo: "APROFUNDE O OBJETIVO",
+    orientacao: "Transforme o objetivo em algo concreto.",
+    frase: "O que precisaria acontecer profissionalmente para você chegar nisso?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  falta_problema: {
+    rotulo: "FALTA PROBLEMA",
+    orientacao: "Descubra o que hoje impede esse avanço.",
+    frase: "Hoje, onde exatamente o inglês está te limitando para chegar nesse próximo nível?",
+    nivel: "atencao",
+    etapa: "spin",
   },
   aprofunde: {
     rotulo: "APROFUNDE",

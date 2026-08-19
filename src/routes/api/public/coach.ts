@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
-import { COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
+import { CLASSIFY_SYSTEM, COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +22,22 @@ const Body = z.object({
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
+const MODEL = "google/gemini-3.1-flash-lite";
+const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+/** Threshold maior para eventos críticos; moderado para aprofundamento de SPIN. */
+const CRITICOS = new Set<string>([
+  "fechou",
+  "intencao_compra",
+  "financeiro",
+  "pensar",
+  "segunda_opiniao",
+  "tempo",
+  "nao_negocie",
+  "pedido_decisao",
+  "isolar_financeiro",
+]);
+const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.7 : 0.45);
 
 /** Frase em uma linha, sem aspas, sem rótulo, curta. */
 function clean(raw: string): string {
@@ -31,6 +47,28 @@ function clean(raw: string): string {
   const words = s.split(/\s+/);
   if (words.length > 24) s = `${words.slice(0, 24).join(" ")}…`;
   return s;
+}
+
+function extractJson(raw: string): unknown {
+  const s = (raw || "").replace(/```json|```/g, "").trim();
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("sem JSON");
+  return JSON.parse(s.slice(start, end + 1));
+}
+
+async function callAI(messages: Array<{ role: string; content: string }>, key: string, maxTokens = 800) {
+  return fetch(AI_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      reasoning_effort: "none", // latência: sem raciocínio
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.7,
+    }),
+  });
 }
 
 export const Route = createFileRoute("/api/public/coach")({
@@ -51,82 +89,135 @@ export const Route = createFileRoute("/api/public/coach")({
         const last = parsed.turns[parsed.turns.length - 1];
         const quick = last ? detect(last.text) : null;
 
-        // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
-        const tipo = (
-          parsed.tipo && parsed.tipo in FALLBACKS ? parsed.tipo : quick?.tipo ?? "nenhum"
-        ) as SignalType;
+        const transcript = parsed.turns
+          .slice(-4)
+          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
+          .join("\n");
 
+        const ms = () => Date.now() - started;
+        const nada = (decisao: string, debug?: Record<string, unknown>) =>
+          Response.json({ tipo: "nenhum", fonte: "ia", decisao, ms: ms(), debug }, { headers: CORS });
+
+        // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
+        let tipo = (
+          parsed.tipo && parsed.tipo in FALLBACKS ? parsed.tipo : (quick?.tipo ?? "nenhum")
+        ) as SignalType;
+        let etapaIA: string | undefined;
+        let orientacaoIA: string | undefined;
+        let fraseIA = "";
+        let confianca = tipo === "nenhum" ? 0 : 0.9;
+        let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
+        const debug: Record<string, unknown> = { regraLocal: quick?.tipo ?? null };
+
+        // ---- Camada 1.5: nenhuma regra bateu -> a IA procura a próxima melhor ação.
         if (tipo === "nenhum") {
-          return Response.json({ tipo: "nenhum", fonte: "ia", ms: Date.now() - started }, { headers: CORS });
+          if (!key) return nada("AI_NAO_CONFIGURADA", debug);
+          try {
+            const res = await callAI(
+              [
+                { role: "system", content: CLASSIFY_SYSTEM },
+                { role: "user", content: `CONVERSA:\n${transcript}\n\nResponda só o JSON.` },
+              ],
+              key,
+            );
+            if (!res.ok) return nada(`AI_HTTP_${res.status}`, debug);
+            const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+            const raw = data.choices?.[0]?.message?.content ?? "";
+            debug["classificadorRaw"] = raw.slice(0, 600);
+            if (!raw.trim()) return nada("AI_EMPTY_RESPONSE", debug);
+
+            let obj: Record<string, unknown>;
+            try {
+              obj = extractJson(raw) as Record<string, unknown>;
+            } catch {
+              return nada("INVALID_JSON", debug);
+            }
+            debug["classificadorJson"] = obj;
+
+            const t = String(obj["tipo"] ?? "nenhum");
+            confianca = Number(obj["confianca"] ?? 0.6);
+            if (!Number.isFinite(confianca)) confianca = 0.6;
+            if (t === "nenhum") return nada("NO_ACTION_NEEDED", { ...debug, confianca });
+            if (!(t in FALLBACKS)) return nada("PARSE_ERROR", { ...debug, tipoInvalido: t });
+            if (confianca < threshold(t))
+              return nada("LOW_CONFIDENCE", { ...debug, tipoSugerido: t, confianca, minimo: threshold(t) });
+
+            tipo = t as SignalType;
+            etapaIA = typeof obj["etapa"] === "string" ? (obj["etapa"] as string) : undefined;
+            orientacaoIA = typeof obj["orientacao"] === "string" ? (obj["orientacao"] as string) : undefined;
+            fraseIA = clean(String(obj["frase"] ?? ""));
+            decisao = `${tipo.toUpperCase()}_IA`;
+          } catch (e) {
+            return nada("PARSE_ERROR", { ...debug, erro: e instanceof Error ? e.message : String(e) });
+          }
         }
 
         const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
+        const etapaBruta = parsed.etapa ?? etapaIA;
         const etapa =
-          parsed.etapa && (ETAPAS as readonly string[]).includes(parsed.etapa) ? parsed.etapa : base.etapa;
+          etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa;
 
         const card = {
           tipo,
           etapa,
           rotulo: base.rotulo,
           nivel: base.nivel,
-          orientacao: base.orientacao,
+          orientacao: orientacaoIA?.trim() || base.orientacao,
+          confianca,
+          decisao,
           fonte: "ia" as const,
         };
 
         if (!key) {
           return Response.json(
-            { ...card, frase: base.frase, ms: Date.now() - started, aviso: "AI não configurada." },
+            { ...card, frase: base.frase, ms: ms(), debug, aviso: "AI não configurada." },
             { headers: CORS },
           );
         }
 
-        // Contexto mínimo: só a regra da situação + últimos turnos.
-        const transcript = parsed.turns
-          .slice(-4)
-          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
-          .join("\n");
+        // A IA da classificação já escreveu uma frase boa: não gasta outra chamada.
+        if (fraseIA.length >= 12) {
+          return Response.json({ ...card, frase: fraseIA, ms: ms(), debug }, { headers: CORS });
+        }
 
+        // Contexto mínimo: só a regra da situação + últimos turnos.
         const upstreamStart = Date.now();
         try {
-          const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "google/gemini-3.1-flash-lite",
-              reasoning_effort: "none", // latência: sem raciocínio
-              messages: [
-                { role: "system", content: COACH_SYSTEM },
-                {
-                  role: "user",
-                  content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
-                    RULE_SNIPPETS[tipo] ?? base.orientacao
-                  }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
-                },
-              ],
-              max_tokens: 800,
-              temperature: 0.7,
-            }),
-          });
+          const res = await callAI(
+            [
+              { role: "system", content: COACH_SYSTEM },
+              {
+                role: "user",
+                content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
+                  RULE_SNIPPETS[tipo] ?? base.orientacao
+                }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+              },
+            ],
+            key,
+          );
 
           if (!res.ok) {
             return Response.json(
-              { ...card, fonte: "regra", frase: base.frase, ms: Date.now() - started, aviso: `IA indisponível (${res.status})` },
+              {
+                ...card,
+                fonte: "regra",
+                frase: base.frase,
+                ms: ms(),
+                debug,
+                aviso: `IA indisponível (${res.status})`,
+              },
               { headers: CORS },
             );
           }
 
           const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
           const raw = clean(data.choices?.[0]?.message?.content ?? "");
+          debug["fraseRaw"] = raw;
           // Saída truncada/vazia cai na frase do playbook.
           const frase = raw.length >= 12 ? raw : "";
 
           return Response.json(
-            {
-              ...card,
-              frase: frase || base.frase,
-              ms: Date.now() - started,
-              iaMs: Date.now() - upstreamStart,
-            },
+            { ...card, frase: frase || base.frase, ms: ms(), iaMs: Date.now() - upstreamStart, debug },
             { headers: CORS },
           );
         } catch (e) {
@@ -135,7 +226,8 @@ export const Route = createFileRoute("/api/public/coach")({
               ...card,
               fonte: "regra",
               frase: base.frase,
-              ms: Date.now() - started,
+              ms: ms(),
+              debug,
               aviso: `Falha na IA: ${e instanceof Error ? e.message : String(e)}`,
             },
             { headers: CORS },
