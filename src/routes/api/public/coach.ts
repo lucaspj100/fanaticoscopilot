@@ -92,7 +92,7 @@ export const Route = createFileRoute("/api/public/coach")({
             method: "POST",
             headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "google/gemini-3.7-flash",
+              model: "google/gemini-3.1-flash-lite",
               reasoning_effort: "none", // latência: sem raciocínio
               messages: [
                 { role: "system", content: COACH_SYSTEM },
