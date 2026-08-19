@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
-import { SYSTEM_PROMPT } from "@/lib/playbook";
+import { COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,33 +16,22 @@ const Body = z.object({
     .array(z.object({ speaker: z.enum(["cliente", "vendedor"]), text: z.string().max(1200) }))
     .min(1)
     .max(6),
+  // Situação já classificada pela camada 1 (opcional).
+  tipo: z.string().optional(),
+  etapa: z.string().optional(),
 });
-
-const VALID: SignalType[] = [
-  "rapport_longo",
-  "di_ausente",
-  "aprofunde",
-  "falta_implicacao",
-  "criterio_compra",
-  "personalize",
-  "quatro_fatores",
-  "validar_solucao",
-  "isolar_financeiro",
-  "financeiro",
-  "tempo",
-  "pensar",
-  "segunda_opiniao",
-  "metodologia",
-  "interesse",
-  "intencao_compra",
-  "nao_negocie",
-  "pedido_decisao",
-  "fechou",
-  "nenhum",
-];
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
 
+/** Frase em uma linha, sem aspas, sem rótulo, curta. */
+function clean(raw: string): string {
+  let s = (raw || "").trim().split("\n")[0]?.trim() ?? "";
+  s = s.replace(/^(FALE|PERGUNTE|Frase)\s*:\s*/i, "");
+  s = s.replace(/^["“”'`]+|["“”'`]+$/g, "").trim();
+  const words = s.split(/\s+/);
+  if (words.length > 24) s = `${words.slice(0, 24).join(" ")}…`;
+  return s;
+}
 
 export const Route = createFileRoute("/api/public/coach")({
   server: {
@@ -62,11 +51,40 @@ export const Route = createFileRoute("/api/public/coach")({
         const last = parsed.turns[parsed.turns.length - 1];
         const quick = last ? detect(last.text) : null;
 
-        if (!key) {
-          return Response.json({ error: "AI não configurada." }, { status: 500, headers: CORS });
+        // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
+        const tipo = (
+          parsed.tipo && parsed.tipo in FALLBACKS ? parsed.tipo : quick?.tipo ?? "nenhum"
+        ) as SignalType;
+
+        if (tipo === "nenhum") {
+          return Response.json({ tipo: "nenhum", fonte: "ia", ms: Date.now() - started }, { headers: CORS });
         }
 
-        const transcript = parsed.turns.map((t) => `${t.speaker.toUpperCase()}: ${t.text}`).join("\n");
+        const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
+        const etapa =
+          parsed.etapa && (ETAPAS as readonly string[]).includes(parsed.etapa) ? parsed.etapa : base.etapa;
+
+        const card = {
+          tipo,
+          etapa,
+          rotulo: base.rotulo,
+          nivel: base.nivel,
+          orientacao: base.orientacao,
+          fonte: "ia" as const,
+        };
+
+        if (!key) {
+          return Response.json(
+            { ...card, frase: base.frase, ms: Date.now() - started, aviso: "AI não configurada." },
+            { headers: CORS },
+          );
+        }
+
+        // Contexto mínimo: só a regra da situação + últimos turnos.
+        const transcript = parsed.turns
+          .slice(-4)
+          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
+          .join("\n");
 
         const upstreamStart = Date.now();
         try {
@@ -75,79 +93,50 @@ export const Route = createFileRoute("/api/public/coach")({
             headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               model: "google/gemini-3.7-flash",
-              reasoning_effort: "none", // latência: sem raciocínio, resposta em ~1s
+              reasoning_effort: "none", // latência: sem raciocínio
               messages: [
-                { role: "system", content: SYSTEM_PROMPT },
+                { role: "system", content: COACH_SYSTEM },
                 {
                   role: "user",
-                  content: `Últimos turnos da call:\n${transcript}\n\nDevolva o JSON da orientação para o vendedor agora.`,
+                  content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
+                    RULE_SNIPPETS[tipo] ?? base.orientacao
+                  }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
                 },
               ],
-              response_format: { type: "json_object" },
-              max_tokens: 600,
-              temperature: 0.3,
+              max_tokens: 60,
+              temperature: 0.7,
             }),
           });
 
           if (!res.ok) {
-            const detail = await res.text().catch(() => "");
-            if (quick) {
-              return Response.json(
-                { ...quick, fonte: "regra", ms: Date.now() - started, aviso: `IA indisponível (${res.status})` },
-                { headers: CORS },
-              );
-            }
             return Response.json(
-              { error: `IA indisponível (${res.status})`, detail: detail.slice(0, 300) },
-              { status: res.status, headers: CORS },
-            );
-          }
-
-          const data = (await res.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-          };
-          const raw = data.choices?.[0]?.message?.content ?? "{}";
-          const out = JSON.parse(raw.replace(/^```json\s*|```$/g, "")) as {
-            etapa?: string;
-            tipo?: string;
-            orientacao?: string;
-            frase?: string;
-          };
-
-          const tipo = (VALID.includes(out.tipo as SignalType) ? out.tipo : quick?.tipo ?? "nenhum") as SignalType;
-          if (tipo === "nenhum") {
-            return Response.json({ tipo: "nenhum", fonte: "ia", ms: Date.now() - started }, { headers: CORS });
-          }
-          const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
-          const etapa = (ETAPAS as readonly string[]).includes(out.etapa ?? "") ? out.etapa : base.etapa;
-
-          return Response.json(
-            {
-              tipo,
-              etapa,
-              rotulo: base.rotulo,
-              nivel: base.nivel,
-              // Uma linha, uma frase — nunca parágrafos durante a call.
-              orientacao: (out.orientacao?.trim() || base.orientacao).split("\n")[0],
-              frase: (out.frase ?? "").trim() || base.frase,
-              fonte: "ia",
-              ms: Date.now() - started,
-              // iaMs = tempo do modelo; o resto da diferença é rede/servidor
-              iaMs: Date.now() - upstreamStart,
-            },
-
-            { headers: CORS },
-          );
-        } catch (e) {
-          if (quick) {
-            return Response.json(
-              { ...quick, fonte: "regra", ms: Date.now() - started, aviso: `Falha na IA: ${e instanceof Error ? e.message : String(e)}` },
+              { ...card, fonte: "regra", frase: base.frase, ms: Date.now() - started, aviso: `IA indisponível (${res.status})` },
               { headers: CORS },
             );
           }
+
+          const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+          const frase = clean(data.choices?.[0]?.message?.content ?? "");
+
           return Response.json(
-            { error: e instanceof Error ? e.message : "Erro inesperado" },
-            { status: 500, headers: CORS },
+            {
+              ...card,
+              frase: frase || base.frase,
+              ms: Date.now() - started,
+              iaMs: Date.now() - upstreamStart,
+            },
+            { headers: CORS },
+          );
+        } catch (e) {
+          return Response.json(
+            {
+              ...card,
+              fonte: "regra",
+              frase: base.frase,
+              ms: Date.now() - started,
+              aviso: `Falha na IA: ${e instanceof Error ? e.message : String(e)}`,
+            },
+            { headers: CORS },
           );
         }
       },
