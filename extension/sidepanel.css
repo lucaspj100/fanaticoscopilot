@@ -120,3 +120,18 @@ footer input {
 .diag-key b.slow { color: var(--alerta); }
 .diag li.slow b { color: var(--alerta); }
 .diag li { word-break: break-all; }
+
+/* modo call x diagnóstico */
+button.ghost {
+  align-self: flex-start;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 5px 10px;
+  letter-spacing: 0.04em;
+}
+button.ghost:hover { color: var(--text); }
+#diag-panel { display: flex; flex-direction: column; gap: 12px; }
+.card .tag .rotulo { display: inline-block; }
