@@ -18,29 +18,33 @@
 
     <main id="cards"></main>
 
-    <section class="diag">
-      <h2>Diagnóstico de latência <span id="diag-total"></span></h2>
-      <ul id="diag"></ul>
-      <div class="diag-key">
-        <span>1º alerta <b id="diag-first">—</b></span>
-        <span>Sugestão completa <b id="diag-full">—</b></span>
-      </div>
-    </section>
+    <button id="diag-toggle" class="ghost">Ver diagnóstico</button>
 
-    <section class="diag">
-      <h2>Diagnóstico de rede</h2>
-      <ul id="net"><li>Nenhuma requisição ainda<b>—</b></li></ul>
-    </section>
+    <div id="diag-panel" hidden>
+      <section class="diag">
+        <h2>Latência <span id="diag-total"></span></h2>
+        <ul id="diag"></ul>
+        <div class="diag-key">
+          <span>1º alerta <b id="diag-first">—</b></span>
+          <span>Sugestão completa <b id="diag-full">—</b></span>
+        </div>
+      </section>
 
-    <section class="transcript">
-      <h2>Transcrição</h2>
-      <ul id="transcript"></ul>
-    </section>
+      <section class="diag">
+        <h2>Rede</h2>
+        <ul id="net"><li>Nenhuma requisição ainda<b>—</b></li></ul>
+      </section>
 
-    <footer>
-      <label for="endpoint">Servidor</label>
-      <input id="endpoint" type="url" spellcheck="false" />
-    </footer>
+      <section class="transcript">
+        <h2>Transcrição</h2>
+        <ul id="transcript"></ul>
+      </section>
+
+      <footer>
+        <label for="endpoint">Servidor</label>
+        <input id="endpoint" type="url" spellcheck="false" />
+      </footer>
+    </div>
 
     <script src="sidepanel.js"></script>
   </body>

@@ -14,7 +14,19 @@ const els = {
   diagFirst: document.getElementById("diag-first"),
   diagFull: document.getElementById("diag-full"),
   net: document.getElementById("net"),
+  diagToggle: document.getElementById("diag-toggle"),
+  diagPanel: document.getElementById("diag-panel"),
 };
+
+/* ---------- modos: CALL (padrão) x DIAGNÓSTICO ---------- */
+
+function setDiag(on) {
+  els.diagPanel.hidden = !on;
+  els.diagToggle.textContent = on ? "Ocultar diagnóstico" : "Ver diagnóstico";
+  chrome.storage.local.set({ diagOpen: on });
+}
+chrome.storage.local.get(["diagOpen"]).then(({ diagOpen }) => setDiag(!!diagOpen));
+els.diagToggle.addEventListener("click", () => setDiag(els.diagPanel.hidden));
 
 const ETAPAS_DIAG = [
   ["vad", "VAD / fim de fala"],
@@ -22,10 +34,10 @@ const ETAPAS_DIAG = [
   ["upload", "Rede (upload)"],
   ["stt", "Speech-to-Text"],
   ["classificacao", "Classificação"],
-  ["ia", "IA (sugestão)"],
+  ["ia", "IA (frase)"],
 ];
 
-const fmt = (ms) => (ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms} ms`);
+const fmt = (ms) => (ms == null ? "—" : ms <= 0 ? "antes do fim da fala" : ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms} ms`);
 
 function renderTiming(t) {
   els.diag.replaceChildren(
@@ -65,7 +77,6 @@ function renderNet(n) {
 }
 
 let running = false;
-let lastTipo = null;
 
 chrome.storage.local.get(["endpoint"]).then(({ endpoint }) => {
   const url = !endpoint || isPreviewUrl(endpoint) ? DEFAULT_ENDPOINT : endpoint;
@@ -89,27 +100,29 @@ function setRunning(on) {
   els.dot.classList.toggle("on", on);
 }
 
-// Prioridade comercial: só troca o card quando surge algo mais relevante.
-const PRIORIDADE = {
-  fechou: 100,
-  intencao_compra: 90,
-  nao_negocie: 85,
-  pensar: 80,
-  financeiro: 78,
-  segunda_opiniao: 74,
-  tempo: 70,
-  isolar_financeiro: 66,
-  pedido_decisao: 64,
-  validar_solucao: 60,
-  metodologia: 56,
-  quatro_fatores: 52,
-  falta_implicacao: 50,
-  aprofunde: 46,
-  criterio_compra: 44,
-  personalize: 40,
-  di_ausente: 36,
-  interesse: 34,
-  rapport_longo: 20,
+/* ---------- estabilidade do card ---------- */
+/* Grupos: 5 fechamento/sim · 4 objeção · 3 pergunta direta
+   2 aprofundamento · 1 alerta de processo */
+const GRUPO = {
+  fechou: 5,
+  intencao_compra: 5,
+  pedido_decisao: 5,
+  financeiro: 4,
+  pensar: 4,
+  segunda_opiniao: 4,
+  tempo: 4,
+  nao_negocie: 4,
+  isolar_financeiro: 4,
+  metodologia: 3,
+  criterio_compra: 3,
+  validar_solucao: 3,
+  quatro_fatores: 3,
+  aprofunde: 2,
+  falta_implicacao: 2,
+  interesse: 2,
+  personalize: 1,
+  di_ausente: 1,
+  rapport_longo: 1,
 };
 
 const ETAPA_LABEL = {
@@ -121,39 +134,66 @@ const ETAPA_LABEL = {
   fechamento: "Fechamento",
 };
 
-let atual = null;
+const HOLD_MS = 20000; // mantém a mesma situação na tela enquanto ela continua
 
-function renderCard(card) {
-  if (!card || card.tipo === "nenhum") return;
+let atual = null; // { card, el, at }
 
-  // Refino da IA sobre o card de regra do mesmo momento sempre entra.
-  const refino = atual && card.fonte === "ia" && atual.fonte === "regra";
-  if (atual && !refino && (PRIORIDADE[card.tipo] ?? 0) < (PRIORIDADE[atual.tipo] ?? 0) && card.fonte === "regra") {
-    return; // situação menos relevante: não rouba a tela do vendedor
-  }
-
+function buildCard(card) {
   const el = document.createElement("article");
   el.className = `card ${card.nivel || "alerta"}`;
   el.innerHTML = `
-    <div class="tag">${card.rotulo || card.tipo}<span class="etapa">${ETAPA_LABEL[card.etapa] || ""}</span></div>
+    <div class="tag"><span class="rotulo"></span><span class="etapa"></span></div>
     <div class="orient"></div>
     <div class="frase-wrap" hidden>
-      <div class="frase-label">PERGUNTE:</div>
+      <div class="frase-label">FALE:</div>
       <div class="frase" title="Clique para copiar"></div>
     </div>
-    <div class="meta">${card.fonte === "regra" ? "regra instantânea" : "IA"} · ${card.ms ?? "?"} ms</div>`;
-  el.querySelector(".orient").textContent = card.orientacao || "";
-  if (card.frase) {
-    el.querySelector(".frase-wrap").hidden = false;
-    const frase = el.querySelector(".frase");
-    frase.textContent = `“${card.frase}”`;
-    frase.addEventListener("click", () => navigator.clipboard.writeText(card.frase));
-  }
-  els.cards.replaceChildren(el); // no máximo UMA situação visível
-  atual = card;
-  lastTipo = card.tipo;
+    <div class="meta"></div>`;
+  return el;
 }
 
+function fillCard(el, card) {
+  el.className = `card ${card.nivel || "alerta"}`;
+  el.querySelector(".rotulo").textContent = card.rotulo || card.tipo;
+  el.querySelector(".etapa").textContent = ETAPA_LABEL[card.etapa] || "";
+  if (card.orientacao) el.querySelector(".orient").textContent = card.orientacao;
+
+  const wrap = el.querySelector(".frase-wrap");
+  if (card.frase) {
+    wrap.hidden = false;
+    const frase = el.querySelector(".frase");
+    frase.textContent = `“${card.frase}”`;
+    frase.onclick = () => navigator.clipboard.writeText(card.frase);
+  }
+  el.querySelector(".meta").textContent =
+    card.fonte === "ia" ? `frase da IA · ${card.ms ?? "?"} ms` : "alerta instantâneo · aguardando frase…";
+}
+
+function renderCard(card) {
+  if (!card || card.tipo === "nenhum") return;
+  const agora = Date.now();
+
+  // Mesma situação: atualiza o card no lugar (a IA só completa a frase).
+  if (atual && atual.card.tipo === card.tipo) {
+    const merged = { ...atual.card, ...card, frase: card.frase || atual.card.frase };
+    fillCard(atual.el, merged);
+    atual = { card: merged, el: atual.el, at: atual.at };
+    return;
+  }
+
+  if (atual) {
+    const novo = GRUPO[card.tipo] ?? 0;
+    const velho = GRUPO[atual.card.tipo] ?? 0;
+    const antigo = agora - atual.at > HOLD_MS;
+    // Só troca por algo mais importante — ou quando o card já envelheceu.
+    if (novo <= velho && !antigo) return;
+  }
+
+  const el = buildCard(card);
+  fillCard(el, card);
+  els.cards.replaceChildren(el); // no máximo UMA situação visível
+  atual = { card, el, at: agora };
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
@@ -165,7 +205,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg?.type === "COPILOT_TRANSCRIPT") {
     const li = document.createElement("li");
-    li.textContent = `${msg.text}  (${msg.ms} ms)`;
+    li.textContent = `${msg.parcial ? "· " : ""}${msg.text}  (${msg.ms} ms)`;
     els.transcript.prepend(li);
     while (els.transcript.children.length > 20) els.transcript.lastElementChild.remove();
   }
@@ -203,5 +243,3 @@ els.toggle.addEventListener("click", async () => {
     els.status.textContent = `⚠ ${res?.error || chrome.runtime.lastError?.message || "Falha ao iniciar."}`;
   }
 });
-
-void lastTipo;
