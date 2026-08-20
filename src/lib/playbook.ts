@@ -190,6 +190,16 @@ ou qualquer entrevista sobre um assunto que o cliente citou apenas como critéri
 
 /** Trecho do playbook enviado APENAS quando a situação corresponde. */
 export const RULE_SNIPPETS: Record<string, string> = {
+  di_resistencia:
+    "Ele recusa dar posicionamento. Descubra o motivo real dessa recusa — não é objeção de preço nem 'preciso pensar'.",
+  di_criterios:
+    "Ele listou o que precisa validar. Amarre esses pontos à decisão: se validarmos aqui, ele se posiciona no final?",
+  di_comparacao:
+    "Ele quer comparar outras opções. Teste a consequência disso para a D.I., não entre no assunto metodologia.",
+  di_pede_apresentacao:
+    "Ele não tem mais informação para dar. Pare de investigar: alinhe o posicionamento ao final e avance.",
+  di_estabelecida: "D.I. aceita. Não prolongue: confirme em uma frase curta e avance.",
+
   rapport_longo: "A conexão já foi criada. Faça a transição do rapport para a entrevista.",
   di_ausente: "D.I.: alinhe que ao final haverá um posicionamento claro, sim ou não. Não force compra.",
   aprofunde_objetivo:
