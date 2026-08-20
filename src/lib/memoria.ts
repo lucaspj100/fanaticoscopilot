@@ -159,7 +159,7 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
 /** Campos preenchidos — usado no diagnóstico. */
 export function camposPreenchidos(m: Memoria): string[] {
   return Object.entries(m)
-    .filter(([, v]) => (Array.isArray(v) ? v.length > 0 : !!v))
+    .filter(([k, v]) => (k === "diStatus" ? v !== "nao_apresentada" : Array.isArray(v) ? v.length > 0 : !!v))
     .map(([k]) => k);
 }
 
