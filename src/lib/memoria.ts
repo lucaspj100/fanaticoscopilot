@@ -273,10 +273,8 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
   }
 
   // SPIN: o estado é DERIVADO dos campos; a IA só pode confirmar, nunca inflar.
-  const derivado = derivarSpinStatus(memoria);
-  const sugerido = spinStatusVal(p["spinStatus"]);
-  const novoSpin =
-    sugerido && SPIN_ORDEM[sugerido] < SPIN_ORDEM[derivado] ? derivado : derivado;
+  const novoSpin = derivarSpinStatus(memoria);
+
   if (novoSpin !== memoria.spinStatus && SPIN_ORDEM[novoSpin] >= SPIN_ORDEM[memoria.spinStatus]) {
     memoria.spinStatus = novoSpin;
     alterados.push("spinStatus");
