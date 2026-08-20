@@ -169,10 +169,17 @@ export const Route = createFileRoute("/api/public/coach")({
         const memoria = normalizarMemoria(parsed.memoria);
         const memoriaTexto = memoriaParaPrompt(memoria);
         const camposMemoria = camposPreenchidos(memoria);
+        const spinPronto = spinSuficiente(memoria);
         const blocoContexto = memoriaTexto
           ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
           : "";
         const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
+        const blocoSpin = isSpin
+          ? `\nESTADO DO SPIN: ${derivarSpinStatus(memoria)}${
+              spinPronto ? " — SPIN SUFICIENTE: não investigue mais, confirme e avance." : ""
+            }`
+          : "";
+
         const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
         const blocoSugestoes = sugestoes.length
           ? `\n\nFRASES JÁ SUGERIDAS AO VENDEDOR (não repita nem reformule):\n${sugestoes
