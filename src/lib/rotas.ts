@@ -145,7 +145,18 @@ export type NextAction =
   | "descobrir_criterio"
   | "apresentar"
   | "tratar_objecao"
-  | "ficar_em_silencio";
+  | "ficar_em_silencio"
+  // V3.0 — contribuição: devolver valor antes de extrair informação.
+  | "contextualizar"
+  | "trazer_analogia"
+  | "dar_exemplo"
+  | "reformular_perspectiva"
+  | "conectar_pontos"
+  | "fazer_hipotese"
+  | "validar_hipotese"
+  | "perguntar"
+  | "aprofundar";
+
 
 type Degrau = {
   /** O que ainda queremos descobrir. */
