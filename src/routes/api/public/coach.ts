@@ -11,7 +11,10 @@ import {
   memoriaParaPrompt,
   normalizarMemoria,
   avaliacaoSpin,
+  aplicarMapaLocal,
+  decisaoDaMemoria,
 } from "@/lib/memoria";
+import { ROTAS, pontuarFala, rotaParaPrompt, type Motivacao } from "@/lib/rotas";
 import {
   CLASSIFY_SYSTEM,
   COACH_SYSTEM,
@@ -22,6 +25,7 @@ import {
   RULE_SNIPPETS,
   SPIN_CLASSIFY_SYSTEM,
   SPIN_COACH_EXTRA,
+  ROTAS_EXTRA,
 } from "@/lib/playbook";
 
 
@@ -172,6 +176,19 @@ export const Route = createFileRoute("/api/public/coach")({
           .join("\n");
 
         const memoria = normalizarMemoria(parsed.memoria);
+        const naFala = Object.keys(pontuarFala(last?.text ?? "")) as Motivacao[];
+        // A memória pode ainda não ter processado esta fala: acumulamos localmente
+        // as motivações e o mapa dos turnos do cliente antes de decidir a rota.
+        for (const t of parsed.turns.filter((t) => t.speaker === "cliente")) {
+          const local = aplicarMapaLocal(memoria, t.text);
+          memoria.mapa = local.memoria.mapa;
+          memoria.motivacoes = local.memoria.motivacoes;
+          memoria.rota = local.memoria.rota;
+          memoria.criteriosCompra = local.memoria.criteriosCompra;
+          memoria.ganchos = local.memoria.ganchos;
+        }
+        const objecaoAtiva = !!quick && OBJECOES_REAIS.has(quick.tipo);
+
         const memoriaTexto = memoriaParaPrompt(memoria);
         const camposMemoria = camposPreenchidos(memoria);
         const avSpin = avaliacaoSpin(memoria);
@@ -195,6 +212,7 @@ export const Route = createFileRoute("/api/public/coach")({
           : "";
 
 
+        // ---- V2.8: motivação dominante, rota de descoberta e próxima ação.
         // ---- Mapa vivo do cliente: o que já sabemos e o que ainda falta.
         const mapaTexto = mapaDaMemoria(memoria);
         const faltando = lacunasDaMemoria(memoria) as SlotKey[];
@@ -216,6 +234,31 @@ export const Route = createFileRoute("/api/public/coach")({
             ? "\n\nRITMO: o vendedor já fez várias perguntas seguidas. Prefira confirmar, resumir, validar ou conectar antes de perguntar de novo."
             : "";
 
+
+        const decisaoComercial = decisaoDaMemoria(memoria, {
+          naFala,
+          perguntasSeguidas,
+          objecaoAtiva,
+        });
+        const blocoRota = `\n\nLEITURA COMERCIAL DO CLIENTE (motor de decisão):\n${rotaParaPrompt(
+          decisaoComercial,
+        )}`;
+        const debugRota = {
+          rotaDominante: decisaoComercial.rota,
+          rotasAtivas: decisaoComercial.rotasAtivas,
+          profundidadeAtual: decisaoComercial.profundidadeAtual,
+          nextAction: decisaoComercial.nextAction,
+          informacaoQueQuerDescobrir: decisaoComercial.informacaoQueQuerDescobrir,
+          motivoNextAction: decisaoComercial.motivo,
+          evidenciasUtilizadas: (memoria.mapa ? Object.entries(memoria.mapa) : [])
+            .filter(([, v]) => v && v.estado !== "nao_explorado" && v.valor)
+            .slice(0, 6)
+            .map(([k, v]) => `${k}: ${v.valor}`),
+          criteriosCompra: memoria.criteriosCompra,
+          ganchosApresentacao: memoria.ganchos,
+          spinSuficiente: avSpin.suficiente,
+          motivoSpinSuficiente: avSpin.motivo,
+        };
 
         const ms = () => Date.now() - started;
         const nada = (decisao: string, debug?: Record<string, unknown>) =>
@@ -245,6 +288,11 @@ export const Route = createFileRoute("/api/public/coach")({
             ? (quick as { tipo: string }).tipo
             : "nenhum";
 
+        // V2.8 — material suficiente, mas sem critério de compra: descubra antes de apresentar.
+        if (isSpin && spinPronto && decisaoComercial.nextAction === "descobrir_criterio" && SPIN_TIPOS.has(tipoCliente)) {
+          tipoCliente = "criterio_compra";
+        }
+
         // SPIN já suficiente: não investigue de novo — oriente a avançar.
         if (isSpin && spinPronto && SPIN_TIPOS.has(tipoCliente) && tipoCliente !== "spin_suficiente") {
           tipoCliente = "spin_suficiente";
@@ -270,6 +318,7 @@ export const Route = createFileRoute("/api/public/coach")({
         let confianca = tipo === "nenhum" ? 0 : 0.9;
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
         const debug: Record<string, unknown> = {
+          ...debugRota,
           regraLocal: quick?.tipo ?? null,
           etapa_manual: etapaManual ?? null,
           memoria_utilizada: !!memoriaTexto,
@@ -288,11 +337,11 @@ export const Route = createFileRoute("/api/public/coach")({
                   role: "system",
                   content: `${
                     isDI ? DI_CLASSIFY_SYSTEM : isSpin ? SPIN_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM
-                  }\n\n${DECISION_EXTRA}\n\nInclua também no JSON: "acao" (uma das ações possíveis) e "porque" (1 frase curta).`,
+                  }\n\n${DECISION_EXTRA}\n\n${ROTAS_EXTRA}\n\nInclua também no JSON: "acao" (uma das ações possíveis), "porque" (1 frase curta) e "rota" (rota de descoberta usada).`,
                 },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -370,7 +419,13 @@ export const Route = createFileRoute("/api/public/coach")({
             if (typeof obj["porque"] === "string") porqueIA = (obj["porque"] as string).trim().slice(0, 180);
 
             // Trava semântica: a frase tenta descobrir algo que o cliente já respondeu.
-            const repetiu = fraseRepetida(memoria.mapa, fraseIA);
+            let repetiu = fraseRepetida(memoria.mapa, fraseIA);
+            if (repetiu && decisaoComercial.exemplo && !fraseRepetida(memoria.mapa, decisaoComercial.exemplo)) {
+              debug["fraseDescartada"] = fraseIA;
+              debug["fraseDaRota"] = decisaoComercial.exemplo;
+              fraseIA = decisaoComercial.exemplo;
+              repetiu = null;
+            }
             if (repetiu)
               return nada("PERGUNTA_JA_RESPONDIDA", {
                 ...debug,
@@ -435,6 +490,10 @@ export const Route = createFileRoute("/api/public/coach")({
           acao: acaoIA ?? null,
           porque: porqueIA ?? null,
           lacunas: faltando.slice(0, 4),
+          rota: decisaoComercial.rota,
+          nextAction: decisaoComercial.nextAction,
+          descobrir: decisaoComercial.informacaoQueQuerDescobrir,
+          rotaRotulo: decisaoComercial.rota ? ROTAS[decisaoComercial.rota].rotulo : null,
           fonte: "ia" as const,
         };
 
@@ -463,13 +522,13 @@ export const Route = createFileRoute("/api/public/coach")({
                     : isSpin
                       ? `${COACH_SYSTEM}\n\n${SPIN_COACH_EXTRA}`
                       : COACH_SYSTEM
-                }\n\n${NATURALIDADE_EXTRA}`,
+                }\n\n${ROTAS_EXTRA}\n\n${NATURALIDADE_EXTRA}`,
               },
               {
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
+                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
               },
             ],
             key,
@@ -506,10 +565,12 @@ export const Route = createFileRoute("/api/public/coach")({
           let frase = raw.length >= 12 ? raw : base.frase;
           const repetiuFinal = fraseRepetida(memoria.mapa, frase);
           if (repetiuFinal) {
-            // Já respondido nesta call: não repetimos a pergunta — orientamos sem frase.
+            // Já respondido nesta call: em vez de repetir, avançamos pela rota dominante.
             debug["fraseDescartada"] = frase;
             debug["slotRepetido"] = repetiuFinal;
-            frase = "";
+            const alternativa = decisaoComercial.exemplo ?? "";
+            frase = alternativa && !fraseRepetida(memoria.mapa, alternativa) ? alternativa : "";
+            if (frase) debug["fraseDaRota"] = frase;
           }
 
           return Response.json(

@@ -12,6 +12,19 @@ import {
   type Mapa,
   type Slot,
 } from "./mapa";
+import {
+  MOTIVACOES_ZERO,
+  acumularMotivacoes,
+  decidirProximaAcao,
+  detectarCriterios,
+  ganchosApresentacao,
+  novoMotivacoes,
+  rotaDominante,
+  type Decisao,
+  type Gancho,
+  type Motivacao,
+  type Motivacoes,
+} from "./rotas";
 
 
 /**
@@ -62,6 +75,14 @@ export type Memoria = {
   spinPerguntasJaExploradas: string[];
   /** Mapa vivo do cliente — o que já sabemos e o que ainda falta (V2.6). */
   mapa: Mapa;
+  /** V2.8 — intensidade de cada motor de compra, acumulada na call. */
+  motivacoes: Motivacoes;
+  /** Rota de descoberta dominante no momento (pode mudar durante a call). */
+  rota: Motivacao | null;
+  /** Critérios de compra citados pelo cliente (o que ele espera do curso). */
+  criteriosCompra: string[];
+  /** Ganchos para a apresentação: necessidade do cliente → diferencial United. */
+  ganchos: Gancho[];
 };
 
 export const MEMORIA_VAZIA: Memoria = {
@@ -86,6 +107,10 @@ export const MEMORIA_VAZIA: Memoria = {
   spinNecessidade: null,
   spinPerguntasJaExploradas: [],
   mapa: MAPA_VAZIO,
+  motivacoes: MOTIVACOES_ZERO,
+  rota: null,
+  criteriosCompra: [],
+  ganchos: [],
 };
 
 
@@ -218,7 +243,7 @@ export function avaliacaoSpin(m: Memoria): AvaliacaoSpin {
   por("impacto", m.spinImplicacoes.find(ehImplicacaoValida) ?? m.implicacao);
   por("necessidade", m.spinNecessidade ?? m.necessidade);
   const mapa = Object.keys(espelho).length ? aplicarPatchMapa(base, espelho).mapa : base;
-  return avaliarSpin(mapa);
+  return avaliarSpin(mapa, m.rota ?? rotaDominante(m.motivacoes));
 }
 
 export function spinSuficiente(m: Memoria): boolean {
@@ -237,6 +262,32 @@ export function derivarSpinStatus(m: Memoria): SpinStatus {
 }
 
 
+const normalizarMotivacoes = (v: unknown): Motivacoes => {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const out = novoMotivacoes();
+  for (const k of Object.keys(out) as Motivacao[]) {
+    const n = Number(o[k]);
+    if (Number.isFinite(n) && n > 0) out[k] = Math.min(10, n);
+  }
+  return out;
+};
+
+const rotaVal = (v: unknown): Motivacao | null => {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s in MOTIVACOES_ZERO ? (s as Motivacao) : null;
+};
+
+const normalizarGanchos = (v: unknown): Gancho[] =>
+  (Array.isArray(v) ? v : [])
+    .map((g) => {
+      const o = (g && typeof g === "object" ? g : {}) as Record<string, unknown>;
+      const necessidade = txt(o["necessidade"]);
+      const feature = txt(o["featureRelacionada"]);
+      return necessidade && feature ? { necessidade, featureRelacionada: feature } : null;
+    })
+    .filter((g): g is Gancho => !!g)
+    .slice(0, 6);
+
 /** Normaliza qualquer objeto vindo do cliente/IA para o formato da memória. */
 export function normalizarMemoria(input: unknown): Memoria {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
@@ -246,6 +297,10 @@ export function normalizarMemoria(input: unknown): Memoria {
   out.diStatus = diStatus(o["diStatus"]) ?? "nao_apresentada";
   out.spinStatus = spinStatusVal(o["spinStatus"]) ?? "nao_iniciado";
   out.mapa = normalizarMapa(o["mapa"]);
+  out.motivacoes = normalizarMotivacoes(o["motivacoes"]);
+  out.rota = rotaVal(o["rota"]) ?? rotaDominante(out.motivacoes);
+  out.criteriosCompra = arr(o["criteriosCompra"]);
+  out.ganchos = normalizarGanchos(o["ganchos"]);
   return out;
 }
 
@@ -264,6 +319,9 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
     spinImplicacoes: [...atual.spinImplicacoes],
     spinPerguntasJaExploradas: [...atual.spinPerguntasJaExploradas],
     mapa: { ...(atual.mapa ?? novoMapa()) },
+    motivacoes: { ...novoMotivacoes(), ...(atual.motivacoes ?? {}) },
+    criteriosCompra: [...(atual.criteriosCompra ?? [])],
+    ganchos: [...(atual.ganchos ?? [])],
   };
   const alterados: string[] = [];
 
@@ -322,13 +380,45 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
   memoria.mapa = patchMapa.mapa;
   alterados.push(...patchMapa.alterados.map((k) => `mapa.${k}`));
 
+  memoria.rota = rotaDominante(memoria.motivacoes) ?? memoria.rota;
+  memoria.ganchos = ganchosApresentacao(memoria.mapa, memoria.criteriosCompra);
+
   return { memoria, alterados };
 }
 
 /** Aplica na memória o que dá pra descobrir localmente, sem IA (latência zero). */
 export function aplicarMapaLocal(memoria: Memoria, text: string): { memoria: Memoria; alterados: string[] } {
   const { mapa, alterados } = aplicarPatchMapa(memoria.mapa ?? novoMapa(), inferirMapa(text));
-  return { memoria: { ...memoria, mapa }, alterados: alterados.map((k) => `mapa.${k}`) };
+  const { motivacoes, naFala } = acumularMotivacoes(memoria.motivacoes, text);
+  const criteriosNovos = detectarCriterios(text).filter((c) => !(memoria.criteriosCompra ?? []).includes(c));
+  const criteriosCompra = [...(memoria.criteriosCompra ?? []), ...criteriosNovos].slice(-8);
+  const rota = rotaDominante(motivacoes, naFala) ?? memoria.rota ?? null;
+  const ganchos = ganchosApresentacao(mapa, criteriosCompra);
+  return {
+    memoria: { ...memoria, mapa, motivacoes, rota, criteriosCompra, ganchos },
+    alterados: [
+      ...alterados.map((k) => `mapa.${k}`),
+      ...naFala.map((m) => `motivacao.${m}`),
+      ...criteriosNovos.map((c) => `criterio.${c}`),
+    ],
+  };
+}
+
+/** Decisão comercial completa (rota dominante + próxima ação) a partir da memória. */
+export function decisaoDaMemoria(
+  m: Memoria,
+  opts: { naFala?: Motivacao[]; perguntasSeguidas?: number; objecaoAtiva?: boolean } = {},
+): Decisao {
+  const av = avaliacaoSpin(m);
+  return decidirProximaAcao({
+    mapa: m.mapa ?? novoMapa(),
+    motivacoes: m.motivacoes,
+    naFala: opts.naFala ?? [],
+    spinSuficiente: av.suficiente,
+    minimizou: av.minimizou,
+    perguntasSeguidas: opts.perguntasSeguidas ?? 0,
+    objecaoAtiva: opts.objecaoAtiva ?? false,
+  });
 }
 
 /** Bloco do mapa vivo enviado ao motor de decisão. */
@@ -346,7 +436,7 @@ export function lacunasDaMemoria(m: Memoria): string[] {
 export function camposPreenchidos(m: Memoria): string[] {
   return Object.entries(m)
     .filter(([k, v]) =>
-      k === "mapa"
+      k === "mapa" || k === "motivacoes" || k === "ganchos"
         ? false
         : k === "diStatus"
         ? v !== "nao_apresentada"
@@ -380,6 +470,8 @@ export function memoriaParaPrompt(m: Memoria): string {
   add("D.I. — critérios para decidir", m.diCriteriosParaDecidir);
   add("SPIN — estado", m.spinStatus);
   add("SPIN — eixos já explorados", m.spinPerguntasJaExploradas);
+  add("Rota de descoberta dominante", m.rota);
+  add("Critérios de compra citados", m.criteriosCompra);
   return linhas.join("\n");
 }
 

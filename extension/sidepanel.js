@@ -75,6 +75,22 @@ function renderMemoria(memoria, alterados = []) {
     return txt ? [k, label, txt] : null;
   }).filter(Boolean);
 
+  // V2.8 — leitura comercial: rota dominante, motivações e critério de compra.
+  if (memoria?.rota) linhas.push(["rota", "ROTA DOMINANTE", memoria.rota.replace(/_/g, " ")]);
+  const motiv = Object.entries(memoria?.motivacoes || {})
+    .filter(([, v]) => v >= 1)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k.replace(/_/g, " ")} ${v.toFixed(1)}`);
+  if (motiv.length) linhas.push(["motivacoes", "MOTIVAÇÕES", motiv.join(" · ")]);
+  if (memoria?.criteriosCompra?.length)
+    linhas.push(["criteriosCompra", "CRITÉRIOS DE COMPRA", memoria.criteriosCompra.join(" · ")]);
+  if (memoria?.ganchos?.length)
+    linhas.push([
+      "ganchos",
+      "GANCHOS P/ APRESENTAÇÃO",
+      memoria.ganchos.map((g) => `${g.necessidade} → ${g.featureRelacionada}`).join(" · "),
+    ]);
+
   // Mapa vivo do cliente (V2.6) — o que já sabemos e o que ainda falta.
   const mapa = memoria?.mapa || {};
   const faltando = [];
