@@ -114,6 +114,8 @@ const STORE_KEY = "activeRecommendation";
 /** kind: idle | analisando | silencio | card */
 let state = { kind: "idle", texto: "Aguardando a fala do cliente…", rec: null, sequence: 0, turnId: 0 };
 let seq = 0;
+/** último turno efetivamente commitado na conversa (transcript_final em ordem) */
+let latestCommittedTurnId = 0;
 let hydrated = false;
 
 async function hydrate() {
@@ -151,6 +153,7 @@ function setEstado(kind, texto, turnId) {
 
 function resetRecomendacao() {
   seq = 0;
+  latestCommittedTurnId = 0;
   state = { kind: "idle", texto: "Aguardando a fala do cliente…", rec: null, sequence: 0, turnId: 0 };
   broadcast();
 }
@@ -158,9 +161,20 @@ function resetRecomendacao() {
 /** Aplica um card novo respeitando turno, prioridade e ordem de chegada. */
 function applyCard(card, turnIdRaw) {
   if (!card || card.tipo === "nenhum") return;
-  const turnId = card.turnId ?? turnIdRaw ?? state.turnId ?? 0;
+  const turnId = card.turnId ?? card.sourceTurnId ?? turnIdRaw ?? state.turnId ?? 0;
   // Resposta atrasada de um turno já superado: descarta (race condition).
   if (turnId < (state.turnId || 0)) return;
+  if (turnId < latestCommittedTurnId) return;
+  if (
+    state.kind === "card" &&
+    state.rec &&
+    state.rec.turnId === turnId &&
+    card.recommendationSequence != null &&
+    state.rec.recommendationSequence != null &&
+    card.recommendationSequence < state.rec.recommendationSequence
+  ) {
+    return;
+  }
 
   const atual = state.kind === "card" && state.turnId === turnId ? state.rec : null;
 
@@ -189,6 +203,9 @@ function applyCard(card, turnIdRaw) {
       ...merged,
       id: atual && atual.tipo === card.tipo ? atual.id : `rec_${turnId}_${seq}`,
       turnId,
+      sourceTurnId: turnId,
+      recommendationSequence: merged.recommendationSequence ?? seq,
+      createdAt: Date.now(),
       sequence: seq,
       ts: Date.now(),
     },
@@ -212,11 +229,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg?.type === "COPILOT_TRANSCRIPT" && msg.final) {
     const turnId = msg.turnId ?? 0;
+    latestCommittedTurnId = Math.max(latestCommittedTurnId, turnId);
     if (turnId > (state.turnId || 0)) setEstado("analisando", "Analisando…", turnId);
   }
 
   if (msg?.type === "COPILOT_DECISION") {
-    const turnId = msg.turnId ?? msg.decision?.turnId ?? state.turnId ?? 0;
+    const turnId = msg.sourceTurnId ?? msg.turnId ?? msg.decision?.turnId ?? state.turnId ?? 0;
+    // Resposta atrasada de um turno já superado nunca vira estado ativo.
+    if (turnId < latestCommittedTurnId) return false;
     const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
     if (semAcao && turnId >= (state.turnId || 0) && state.kind !== "card") {
       setEstado("silencio", "Sem intervenção agora.", turnId);
@@ -252,6 +272,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+
+  // Watchdog do offscreen: a captura morreu no meio da call — reacquirir o stream.
+  if (msg?.type === "COPILOT_RECAPTURE") {
+    (async () => {
+      try {
+        const tab = await pickTargetTab();
+        if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
+        const streamId = await getMediaStreamId(tab.id);
+        sendResponse({ ok: true, streamId, tabId: tab.id });
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "COPILOT_HEALTH") toOverlay(msg);
 
   if (msg?.type === "COPILOT_QUERY_STATE") {
     (async () => {
