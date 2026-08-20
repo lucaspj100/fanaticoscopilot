@@ -28,6 +28,10 @@ let lastPartialAt = 0;
 let partialInFlight = false;
 let preAlertTipo = null; // situação já alertada pela parcial deste turno
 let preAlertAt = null;
+/** Cada fala completa reconhecida recebe um turnId incremental.
+ *  O card pertence a um TURNO, nunca a uma janela de tempo. */
+let turnSeq = 0;
+let currentTurnId = 0;
 const turns = []; // histórico curto enviado à IA
 
 /* ---------- etapa manual + memória viva da call ---------- */
@@ -58,6 +62,8 @@ function resetSessao() {
   memoriaInFlight = false;
   preAlertTipo = null;
   preAlertAt = null;
+  turnSeq = 0;
+  currentTurnId = 0;
   emitMemoria([]);
 }
 
@@ -93,8 +99,10 @@ function log(status, extra) {
   chrome.runtime.sendMessage({ type: "COPILOT_STATUS", status, ...extra }).catch(() => {});
 }
 
-function push(card) {
-  chrome.runtime.sendMessage({ type: "COPILOT_CARD", card: { ...card, etapa: etapaManual } }).catch(() => {});
+function push(card, turnId) {
+  chrome.runtime
+    .sendMessage({ type: "COPILOT_CARD", turnId, card: { ...card, etapa: etapaManual, turnId } })
+    .catch(() => {});
 }
 
 
@@ -168,7 +176,7 @@ function downsample(input, fromRate) {
 
 /* ---------- camada 1 antecipada: parcial enquanto o cliente fala ---------- */
 
-async function sendPartial(chunks) {
+async function sendPartial(chunks, turnId) {
   partialInFlight = true;
   try {
     const blob = encodeWav(chunks, TARGET_RATE);
@@ -177,15 +185,18 @@ async function sendPartial(chunks) {
     form.append("file", blob, "recording.wav");
     const data = await apiFetch("/api/public/transcribe", { method: "POST", body: form });
     const text = (data.text || "").trim();
-    if (!text || !speaking) return;
+    // A parcial só vale para o turno que a originou.
+    if (!text || !speaking || turnId !== currentTurnId) return;
 
     const quick = detect(text);
     if (quick && quick.tipo !== preAlertTipo) {
       preAlertTipo = quick.tipo;
       preAlertAt = performance.now();
       // Camada 1: tipo + orientação apenas. A frase vem depois, da IA.
-      push({ ...quick, fonte: "regra", parcial: true, ms: 0 });
-      chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: 0, parcial: true }).catch(() => {});
+      push({ ...quick, fonte: "regra", parcial: true, ms: 0 }, turnId);
+      chrome.runtime
+        .sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: 0, parcial: true, turnId })
+        .catch(() => {});
     }
   } catch {
     /* parcial é best-effort: nunca quebra o turno */
@@ -196,7 +207,7 @@ async function sendPartial(chunks) {
 
 /* ---------- pipeline do turno completo ---------- */
 
-async function processTurn(chunks, speechEndAt, vadDetectedAt) {
+async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
   // t = tempo medido a partir do FIM REAL da fala do cliente
   const t = (ts) => Math.round((ts ?? performance.now()) - speechEndAt);
 
@@ -241,7 +252,8 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
 
   if (!text || text.length < 4) { log("ouvindo"); emit(); return; }
 
-  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t() }).catch(() => {});
+  // Transcrição COMPLETA: encerra o turno anterior imediatamente na UI.
+  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t(), turnId, final: true }).catch(() => {});
 
   // Camada 1 — card imediato (regra local), se ainda não apareceu na parcial
   const classStart = performance.now();
@@ -249,7 +261,10 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   timing.classificacao = Math.round(performance.now() - classStart);
   if (quick && quick.tipo !== alertadoAntes) {
     if (timing.primeiroAlerta == null) timing.primeiroAlerta = t();
-    push({ ...quick, fonte: "regra", ms: t() });
+    push({ ...quick, fonte: "regra", ms: t() }, turnId);
+  } else if (quick && alertadoAntes === quick.tipo) {
+    // o card da parcial deste mesmo turno continua válido — reemite com o turnId final
+    push({ ...quick, fonte: "regra", ms: t() }, turnId);
   }
   emit();
 
@@ -261,7 +276,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
 
   // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
   if (!quick && text.split(/\s+/).length < 4) {
-    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual } }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", turnId, decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual, turnId } }).catch(() => {});
     log("ouvindo");
     return;
   }
@@ -284,6 +299,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     chrome.runtime
       .sendMessage({
         type: "COPILOT_DECISION",
+        turnId,
         decision: {
           decisao: card.decisao || (card.tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL"),
           tipo: card.tipo,
@@ -294,6 +310,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
           aviso: card.aviso,
           etapaManual,
           memoriaAt,
+          turnId,
           debug: card.debug,
         },
 
@@ -302,7 +319,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
-      push({ ...card, ms: timing.total });
+      push({ ...card, ms: timing.total }, turnId);
     }
     emit();
   } catch (e) {
@@ -344,7 +361,7 @@ function flush(speechEndAt) {
   if (!buffer.length) return;
   const chunks = buffer;
   buffer = [];
-  processTurn(chunks, speechEndAt ?? performance.now(), performance.now());
+  processTurn(chunks, speechEndAt ?? performance.now(), performance.now(), currentTurnId);
 }
 
 
@@ -375,6 +392,9 @@ async function start(streamId, ep) {
         lastPartialAt = now;
         preAlertTipo = null;
         preAlertAt = null;
+        // nova fala = novo turno
+        currentTurnId = ++turnSeq;
+        chrome.runtime.sendMessage({ type: "COPILOT_TURN_START", turnId: currentTurnId }).catch(() => {});
         log("falando");
       }
       lastVoiceAt = now;
@@ -392,7 +412,7 @@ async function start(streamId, ep) {
     // Streaming: manda o que já foi falado, sem esperar o fim da fala.
     if (speaking && !partialInFlight && now - lastPartialAt > PARTIAL_EVERY_MS && now - speechStartedAt > 900) {
       lastPartialAt = now;
-      sendPartial(buffer.slice());
+      sendPartial(buffer.slice(), currentTurnId);
     }
 
     if (speaking && now - speechStartedAt > MAX_TURN_MS) {

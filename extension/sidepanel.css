@@ -178,3 +178,13 @@ button.ghost:hover { color: var(--text); }
 .memoria li b { color: var(--text); font-weight: 600; }
 .memoria li.novo b { color: var(--positivo); }
 .memoria .vazio { color: var(--muted); font-size: 12px; padding: 4px 0; }
+
+/* estado entre turnos (sem card válido) */
+.estado {
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  color: rgba(242, 247, 251, 0.5);
+  font-size: 13px;
+}
+.estado.analisando { color: rgba(242, 247, 251, 0.75); }

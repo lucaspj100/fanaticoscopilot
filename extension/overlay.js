@@ -10,7 +10,7 @@
   }
 
   const POS_KEY = "overlayPos";
-  const HOLD_MS = 20000;
+  // O card pertence a um TURNO de fala. A prioridade só arbitra o MESMO turno.
   const GRUPO = {
     fechou: 5, intencao_compra: 5, pedido_decisao: 5,
     financeiro: 4, pensar: 4, segunda_opiniao: 4, tempo: 4, nao_negocie: 4, isolar_financeiro: 4,
@@ -134,8 +134,9 @@
   $("min").addEventListener("click", () => wrap.classList.toggle("min"));
   $("close").addEventListener("click", () => api.hide(true));
 
-  /* ---------- cards ---------- */
-  let atual = null;
+  /* ---------- cards (ciclo de vida por turno de fala) ---------- */
+  let atual = null; // { card, turnId }
+  let currentTurnId = 0;
 
   function paint(card) {
     const cor = COR[card.nivel] || COR.atencao;
@@ -154,21 +155,45 @@
     wrap.classList.remove("min");
   }
 
+  /** Estado sem card: rótulo neutro e área da frase oculta. */
+  function paintEstado(texto) {
+    wrap.style.setProperty("--c", COR.atencao);
+    $("rotulo").textContent = "UNITED COPILOT";
+    const orient = $("orient");
+    orient.textContent = texto;
+    orient.classList.add("idle");
+    $("frase").hidden = true;
+  }
+
+  function novoTurno(turnId) {
+    if (turnId === 1) { currentTurnId = 0; atual = null; } // nova sessão de call
+    if (turnId <= currentTurnId) return;
+    currentTurnId = turnId;
+    atual = null;
+    paintEstado("Analisando…");
+  }
+
   function onCard(card) {
     if (!card || card.tipo === "nenhum") return;
-    const agora = Date.now();
-    if (atual && atual.card.tipo === card.tipo) {
+    const turnId = card.turnId ?? currentTurnId;
+    if (turnId < currentTurnId) return; // card de turno já encerrado
+    if (turnId > currentTurnId) {
+      currentTurnId = turnId;
+      atual = null;
+    }
+
+    if (atual && atual.turnId === turnId && atual.card.tipo === card.tipo) {
       const merged = { ...atual.card, ...card, frase: card.frase || atual.card.frase };
-      atual = { card: merged, at: atual.at };
+      atual = { card: merged, turnId };
       paint(merged);
       return;
     }
-    if (atual) {
+    if (atual && atual.turnId === turnId) {
       const novo = GRUPO[card.tipo] ?? 0;
       const velho = GRUPO[atual.card.tipo] ?? 0;
-      if (novo <= velho && agora - atual.at <= HOLD_MS) return;
+      if (novo <= velho) return;
     }
-    atual = { card, at: agora };
+    atual = { card, turnId };
     paint(card);
     api.show();
   }
@@ -205,6 +230,17 @@
     if (msg?.type === "COPILOT_CARD") {
       api.onCard(msg.card);
       if (msg.card?.etapa) setEtapa(msg.card.etapa);
+    }
+    if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) { currentTurnId = 0; atual = null; }
+    if (msg?.type === "COPILOT_TRANSCRIPT" && msg.final) novoTurno(msg.turnId ?? 0);
+    if (msg?.type === "COPILOT_DECISION") {
+      const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
+      const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
+      if (turnId >= currentTurnId && semAcao && (!atual || atual.turnId <= turnId)) {
+        currentTurnId = Math.max(currentTurnId, turnId);
+        atual = null;
+        paintEstado("Sem intervenção agora.");
+      }
     }
     if (msg?.type === "COPILOT_ETAPA") setEtapa(msg.etapa);
     if (msg?.type === "COPILOT_OVERLAY_HIDE") api.hide();
