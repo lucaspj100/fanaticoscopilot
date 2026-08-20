@@ -99,7 +99,10 @@ export const SLOTS: Record<SlotKey, SlotMeta> = {
       /\b(perdi|j[áa] perdi|deixei passar|nem tentei|n[ãa]o me candidatei|n[ãa]o consegui a vaga|perdi (a|uma) (vaga|promo[çc][ãa]o|oportunidade|chance))\b/i,
       /\b(apareceu uma vaga)\b[^.!?]*\b(n[ãa]o|nem)\b/i,
     ],
-    alvo: [/(perdeu|perdido).*(oportunidade|vaga|chance)|(j[áa] deixou de|deixou passar)/i],
+    alvo: [
+      /(perd(er|eu|ido|endo)|deix(ou|ar) de|deixou passar)[^?]{0,40}(oportunidade|vaga|chance|promo[çc][ãa]o)/i,
+      /(oportunidade|vaga|chance)[^?]{0,40}(perd(er|eu|ido)|deix(ou|ar) de)/i,
+    ],
   },
   urgencia: {
     rotulo: "URGÊNCIA",
