@@ -49,7 +49,13 @@
       font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
       color: var(--c, #ffb020); white-space: nowrap;
     }
+    .etapa {
+      font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(242,247,251,.6); border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px; padding: 2px 7px; white-space: nowrap;
+    }
     .spacer { flex: 1; }
+
     .ctrl {
       all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 6px;
       display: grid; place-items: center; color: rgba(242,247,251,.55); font-size: 13px; line-height: 1;
