@@ -201,15 +201,15 @@ export const Route = createFileRoute("/api/public/coach")({
           try {
             const res = await callAI(
               [
-                { role: "system", content: CLASSIFY_SYSTEM },
+                { role: "system", content: isDI ? DI_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
-
               ],
               key,
             );
+
             if (!res.ok) return nada(`AI_HTTP_${res.status}`, { ...debug, motivo_silencio: "falha na IA" });
             const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
             const raw = data.choices?.[0]?.message?.content ?? "";
