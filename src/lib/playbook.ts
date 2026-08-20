@@ -410,8 +410,11 @@ financeiro, tempo, pensar, segunda_opiniao, fechou, intencao_compra, nenhum
 2. Objetivo dado, sem problema atual → "spin_problema".
 3. Problema dado, sem consequência concreta → "spin_implicacao".
 4. Consequência dada, falta transformar em necessidade explícita → "spin_confirmacao".
-5. Objetivo + problema + implicação já na memória → "spin_suficiente" (orientação: avançar, sem nova pergunta).
-6. Ruído, cortesia ou nada novo → "nenhum". O silêncio é uma resposta válida.
+5. "spin_suficiente" SÓ quando o bloco de estado informar SPIN SUFICIENTE. Se informar
+   MATERIAL COMERCIAL INSUFICIENTE, aprofunde o item faltante indicado — nunca encerre.
+6. Cliente minimizou a dor ou disse "é o momento" sem motivo → aprofunde (spin_implicacao ou spin_confirmacao).
+7. Ruído, cortesia ou nada novo → "nenhum". O silêncio é uma resposta válida.
+
 
 REGRA DO FINANCEIRO: citar "investimento", "valor", "preço" ou perguntar quanto custa NÃO é objeção.
 Só use "financeiro" com resistência explícita: "está caro", "não tenho esse valor", pedido de desconto.
