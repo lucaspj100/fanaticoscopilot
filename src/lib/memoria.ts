@@ -4,6 +4,14 @@
  * enviamos esta memória estruturada + os últimos turnos.
  */
 
+export type DiStatus =
+  | "nao_apresentada"
+  | "apresentada"
+  | "resistencia"
+  | "criterios_identificados"
+  | "resistencia_persistente"
+  | "estabelecida";
+
 export type Memoria = {
   etapaAtual: string | null;
   objetivo: string | null;
@@ -16,6 +24,10 @@ export type Memoria = {
   sinaisCompra: string[];
   informacoesImportantes: string[];
   ultimaInteracao: string | null;
+  /** Estado da negociação da Regra do Jogo / D.I. */
+  diStatus: DiStatus;
+  diMotivoResistencia: string | null;
+  diCriteriosParaDecidir: string[];
 };
 
 export const MEMORIA_VAZIA: Memoria = {
@@ -30,6 +42,28 @@ export const MEMORIA_VAZIA: Memoria = {
   sinaisCompra: [],
   informacoesImportantes: [],
   ultimaInteracao: null,
+  diStatus: "nao_apresentada",
+  diMotivoResistencia: null,
+  diCriteriosParaDecidir: [],
+};
+
+const DI_STATUS: DiStatus[] = [
+  "nao_apresentada",
+  "apresentada",
+  "resistencia",
+  "criterios_identificados",
+  "resistencia_persistente",
+  "estabelecida",
+];
+
+/** Progressão do estado da D.I. — nunca retrocede sozinho. */
+const DI_ORDEM: Record<DiStatus, number> = {
+  nao_apresentada: 0,
+  apresentada: 1,
+  resistencia: 2,
+  criterios_identificados: 3,
+  resistencia_persistente: 4,
+  estabelecida: 5,
 };
 
 const LISTAS = [
@@ -38,9 +72,19 @@ const LISTAS = [
   "objecoes",
   "sinaisCompra",
   "informacoesImportantes",
+  "diCriteriosParaDecidir",
 ] as const;
 
-const STRINGS = ["etapaAtual", "objetivo", "problema", "implicacao", "necessidade", "ultimaInteracao"] as const;
+const STRINGS = [
+  "etapaAtual",
+  "objetivo",
+  "problema",
+  "implicacao",
+  "necessidade",
+  "ultimaInteracao",
+  "diMotivoResistencia",
+] as const;
+
 
 const txt = (v: unknown): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
@@ -53,12 +97,18 @@ const arr = (v: unknown): string[] =>
     .filter((s): s is string => !!s)
     .slice(0, 6);
 
+const diStatus = (v: unknown): DiStatus | null => {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return (DI_STATUS as string[]).includes(s) ? (s as DiStatus) : null;
+};
+
 /** Normaliza qualquer objeto vindo do cliente/IA para o formato da memória. */
 export function normalizarMemoria(input: unknown): Memoria {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const out = { ...MEMORIA_VAZIA } as Memoria;
   for (const k of STRINGS) out[k] = txt(o[k]);
   for (const k of LISTAS) out[k] = arr(o[k]);
+  out.diStatus = diStatus(o["diStatus"]) ?? "nao_apresentada";
   return out;
 }
 
@@ -72,6 +122,7 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
     objecoes: [...atual.objecoes],
     sinaisCompra: [...atual.sinaisCompra],
     informacoesImportantes: [...atual.informacoesImportantes],
+    diCriteriosParaDecidir: [...atual.diCriteriosParaDecidir],
   };
   const alterados: string[] = [];
 
@@ -92,13 +143,23 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
       }
     }
   }
+
+  // D.I.: o estado avança, nunca retrocede sozinho (exceto para "estabelecida").
+  const novoDi = diStatus(p["diStatus"]);
+  if (novoDi && novoDi !== memoria.diStatus) {
+    if (novoDi === "estabelecida" || DI_ORDEM[novoDi] > DI_ORDEM[memoria.diStatus]) {
+      memoria.diStatus = novoDi;
+      alterados.push("diStatus");
+    }
+  }
   return { memoria, alterados };
 }
+
 
 /** Campos preenchidos — usado no diagnóstico. */
 export function camposPreenchidos(m: Memoria): string[] {
   return Object.entries(m)
-    .filter(([, v]) => (Array.isArray(v) ? v.length > 0 : !!v))
+    .filter(([k, v]) => (k === "diStatus" ? v !== "nao_apresentada" : Array.isArray(v) ? v.length > 0 : !!v))
     .map(([k]) => k);
 }
 
@@ -118,6 +179,9 @@ export function memoriaParaPrompt(m: Memoria): string {
   add("Objeções anteriores", m.objecoes);
   add("Sinais de compra", m.sinaisCompra);
   add("Outras informações", m.informacoesImportantes);
+  add("D.I. — estado", m.diStatus);
+  add("D.I. — motivo da resistência", m.diMotivoResistencia);
+  add("D.I. — critérios para decidir", m.diCriteriosParaDecidir);
   return linhas.join("\n");
 }
 
@@ -135,7 +199,18 @@ REGRAS:
 Campos possíveis:
 objetivo (string), problema (string), implicacao (string), necessidade (string),
 criterioCompra (array), pontosQueGostou (array), objecoes (array), sinaisCompra (array),
-informacoesImportantes (array)
+informacoesImportantes (array),
+diStatus (string), diMotivoResistencia (string), diCriteriosParaDecidir (array)
+
+ESTADO DA D.I. (Regra do Jogo — o cliente se compromete a dar um posicionamento AO FINAL, não a comprar agora):
+- diStatus só pode ser: nao_apresentada | apresentada | resistencia | criterios_identificados | resistencia_persistente | estabelecida
+- "resistencia": o cliente diz que não dará posicionamento / não decide hoje.
+- "criterios_identificados": ele lista o que precisa validar antes de se posicionar (método, horário, valores, comparar escolas...).
+  Registre esses pontos em diCriteriosParaDecidir (não só em criterioCompra).
+- "resistencia_persistente": mesmo com os critérios amarrados, ele mantém que não se posiciona.
+- "estabelecida": ele aceita dar um sim/não ao final.
+- diMotivoResistencia: o motivo real, nas palavras dele (ex.: "quer comparar antes de escolher").
+
 
 Responda SOMENTE JSON válido, sem markdown. Exemplo:
 {"objetivo":"conseguir promoção","problema":"inglês trava entrevistas"}

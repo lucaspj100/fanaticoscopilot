@@ -10,6 +10,11 @@ export type Etapa = "rapport" | "di" | "spin" | "apresentacao" | "gatilho" | "fe
 export type SignalType =
   | "rapport_longo"
   | "di_ausente"
+  | "di_resistencia"
+  | "di_criterios"
+  | "di_comparacao"
+  | "di_estabelecida"
+  | "di_pede_apresentacao"
   | "aprofunde"
   | "aprofunde_objetivo"
   | "falta_problema"
