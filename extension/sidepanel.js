@@ -17,7 +17,79 @@ const els = {
   diagToggle: document.getElementById("diag-toggle"),
   diagPanel: document.getElementById("diag-panel"),
   decision: document.getElementById("decision"),
+  memoria: document.getElementById("memoria"),
 };
+
+/* ---------- etapa manual da call (fonte da verdade) ---------- */
+
+const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"];
+let etapaAtual = "rapport";
+
+function paintEtapas() {
+  document
+    .querySelectorAll(".etapa-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.etapa === etapaAtual));
+}
+
+function setEtapa(etapa, { broadcast = true } = {}) {
+  if (!ETAPAS.includes(etapa)) return;
+  etapaAtual = etapa;
+  paintEtapas();
+  chrome.storage.local.set({ etapaAtual: etapa });
+  if (broadcast) chrome.runtime.sendMessage({ type: "COPILOT_ETAPA", etapa }).catch(() => {});
+}
+
+chrome.storage.local.get(["etapaAtual"]).then(({ etapaAtual: e }) => setEtapa(e || "rapport", { broadcast: false }));
+document
+  .querySelectorAll(".etapa-btn")
+  .forEach((b) => b.addEventListener("click", () => setEtapa(b.dataset.etapa)));
+
+/* ---------- memória viva da call ---------- */
+
+const MEM_LABELS = [
+  ["objetivo", "Objetivo"],
+  ["problema", "Problema"],
+  ["implicacao", "Implicação"],
+  ["necessidade", "Necessidade"],
+  ["criterioCompra", "Critério"],
+  ["pontosQueGostou", "Gostou"],
+  ["objecoes", "Objeções"],
+  ["sinaisCompra", "Sinais de compra"],
+  ["informacoesImportantes", "Outros"],
+];
+
+let memoriaAtual = null;
+let memoriaAt = null;
+
+function renderMemoria(memoria, alterados = []) {
+  memoriaAtual = memoria;
+  const linhas = MEM_LABELS.map(([k, label]) => {
+    const v = memoria?.[k];
+    const txt = Array.isArray(v) ? v.join(" · ") : v;
+    return txt ? [k, label, txt] : null;
+  }).filter(Boolean);
+
+  if (!linhas.length) {
+    const p = document.createElement("li");
+    p.className = "vazio";
+    p.textContent = "Nada registrado ainda nesta call.";
+    els.memoria.replaceChildren(p);
+    return;
+  }
+  els.memoria.replaceChildren(
+    ...linhas.map(([k, label, txt]) => {
+      const li = document.createElement("li");
+      const s = document.createElement("span");
+      s.textContent = label;
+      const b = document.createElement("b");
+      b.textContent = txt;
+      li.append(s, b);
+      if (alterados.includes(k)) li.classList.add("novo");
+      return li;
+    }),
+  );
+}
+
 
 /* ---------- modos: CALL (padrão) x DIAGNÓSTICO ---------- */
 
