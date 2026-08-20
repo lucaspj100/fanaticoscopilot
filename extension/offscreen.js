@@ -48,6 +48,9 @@ const MEMORIA_VAZIA = {
   sinaisCompra: [],
   informacoesImportantes: [],
   ultimaInteracao: null,
+  diStatus: "nao_apresentada",
+  diMotivoResistencia: null,
+  diCriteriosParaDecidir: [],
 };
 
 let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
