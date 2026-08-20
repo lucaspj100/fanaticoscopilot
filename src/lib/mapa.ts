@@ -104,7 +104,40 @@ export const SLOTS: Record<SlotKey, SlotMeta> = {
     ],
     alvo: [/(impacta|impacto|o que isso (te )?(custa|causa)|como isso (te )?atrapalha|consequ[êe]ncia)/i],
   },
+  necessidade: {
+    rotulo: "NECESSIDADE / VALOR DA MUDANÇA",
+    prioridade: 5,
+    respondido: [
+      /\b(preciso (destravar|resolver|conseguir|falar|dar conta)|o que eu preciso [ée]|vale a pena (porque|pra mim)|se eu (destravar|resolver|falar))\b[^.!?]{4,}/i,
+      /\b(quero resolver isso (porque|pra)|isso mudaria|mudaria (minha|a minha) (vida|carreira|renda))\b/i,
+    ],
+    parcial: [/\b(preciso (do|de) ingl[êe]s|quero resolver isso)\b/i],
+    alvo: [
+      /(por que.*(vale a pena|importa|resolver isso)|o que (mudaria|isso mudaria)|o que voc[êe] precisa (de verdade|pra isso))/i,
+    ],
+  },
+  gatilho_agora: {
+    rotulo: "GATILHO / POR QUE AGORA",
+    prioridade: 6,
+    respondido: [
+      /\b(agora (porque|que|apareceu)|o que mudou (foi|é)|surgiu (uma|um)|entrei num processo|me chamaram|abriu (uma )?vaga|mudei de (cargo|[áa]rea)|vou (viajar|me mudar))\b[^.!?]{0,60}/i,
+    ],
+    parcial: [
+      /\b(acho que ([ée]|chegou) (o|esse) momento|[ée] hora de come[çc]ar|t[áa] na hora|decidi come[çc]ar agora)\b/i,
+    ],
+    alvo: [
+      /(o que (mudou|te fez).*(agora|come[çc]ar)|por que (justamente )?agora|o que te (fez|levou) (a )?(olhar|procurar|pensar em) ingl[êe]s agora)/i,
+    ],
+  },
+  minimizacao: {
+    rotulo: "MINIMIZAÇÃO DA DOR",
+    prioridade: 99,
+    respondido: [
+      /\b(n[ãa]o ligo (tanto|muito)|n[ãa]o me (incomoda|atrapalha) (tanto|muito)|pra mim (é|e) tranquilo|de boa|n[ãa]o (é|e) t[ãa]o importante|n[ãa]o tenho (tanta )?pressa|sem pressa|n[ãa]o chega a ser um problema|n[ãa]o faz tanta diferen[çc]a|tanto faz)\b/i,
+    ],
+  },
   oportunidade_perdida: {
+
     rotulo: "OPORTUNIDADE PERDIDA",
     prioridade: 5,
     respondido: [
