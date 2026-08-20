@@ -274,7 +274,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
 
   // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
   if (!quick && text.split(/\s+/).length < 4) {
-    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual } }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", turnId, decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual, turnId } }).catch(() => {});
     log("ouvindo");
     return;
   }
@@ -297,6 +297,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
     chrome.runtime
       .sendMessage({
         type: "COPILOT_DECISION",
+        turnId,
         decision: {
           decisao: card.decisao || (card.tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL"),
           tipo: card.tipo,
@@ -307,6 +308,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
           aviso: card.aviso,
           etapaManual,
           memoriaAt,
+          turnId,
           debug: card.debug,
         },
 
@@ -315,7 +317,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
     if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
-      push({ ...card, ms: timing.total });
+      push({ ...card, ms: timing.total }, turnId);
     }
     emit();
   } catch (e) {
