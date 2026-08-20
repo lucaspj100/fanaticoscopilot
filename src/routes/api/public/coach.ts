@@ -50,6 +50,8 @@ const Body = z.object({
   memoria: z.unknown().optional(),
   /** Últimas frases já sugeridas ao vendedor — prevenção de loop. */
   sugestoesAnteriores: z.array(z.string().max(240)).max(5).optional(),
+  /** Fala curta do cliente já concatenada com a interação anterior (ex.: "…virou necessidade? → (cliente) Virou."). */
+  falaCurtaContextual: z.string().max(600).nullable().optional(),
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
@@ -219,6 +221,11 @@ export const Route = createFileRoute("/api/public/coach")({
         const blocoMapa = `\n\nMAPA VIVO DO CLIENTE (tudo que já foi descoberto nesta call — nunca pergunte de novo o que está como respondido):\n${
           mapaTexto || "(ainda vazio)"
         }\nPRÓXIMAS LACUNAS REAIS: ${faltando.slice(0, 4).map((k) => SLOTS[k].rotulo.toLowerCase()).join(", ") || "nenhuma"}`;
+
+        // Fala curta contextual: "Virou." só faz sentido colada na pergunta anterior.
+        const blocoFalaCurta = parsed.falaCurtaContextual
+          ? `\n\nFALA CURTA COM CONTEXTO (o cliente respondeu à interação anterior — interprete junto, nunca descarte):\n${parsed.falaCurtaContextual}`
+          : "";
 
         const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
         const blocoSugestoes = sugestoes.length
