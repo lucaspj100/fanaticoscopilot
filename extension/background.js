@@ -168,7 +168,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           type: "OFFSCREEN_START",
           streamId,
           endpoint: msg.endpoint,
+          etapa: msg.etapa || "rapport",
         });
+
         const { overlayMode } = await chrome.storage.local.get(["overlayMode"]);
         if (overlayMode === "compacto" || overlayMode === "ambos") {
           try {
