@@ -475,6 +475,10 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
 /** Sinais críticos que interrompem qualquer etapa. */
 const CRITICOS_SEMPRE = new Set<SignalType>(["fechou", "intencao_compra"]);
 
+/** Objeções reais que interrompem o SPIN (financeiro só com resistência explícita). */
+const OBJECOES_REAIS = new Set<SignalType>(["financeiro", "pensar", "segunda_opiniao", "tempo"]);
+
+
 /**
  * Camada 1. Quando a etapa manual é "di", a Regra do Jogo tem prioridade:
  * assunto (metodologia, tempo, preço) não sequestra a etapa.
