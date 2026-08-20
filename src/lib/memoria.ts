@@ -501,6 +501,8 @@ export function camposPreenchidos(m: Memoria): string[] {
     .filter(([k, v]) =>
       k === "mapa" || k === "motivacoes" || k === "ganchos" || k === "perfilCliente" || k === "ultimasIntervencoes"
         ? false
+        : k === "dorAtual"
+        ? v !== "desconhecida"
         : k === "diStatus"
         ? v !== "nao_apresentada"
         : k === "spinStatus"
