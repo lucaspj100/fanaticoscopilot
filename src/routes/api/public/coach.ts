@@ -155,6 +155,8 @@ export const Route = createFileRoute("/api/public/coach")({
             ? parsed.etapaManual
             : undefined;
         const isDI = etapaManual === "di";
+        const isSpin = etapaManual === "spin";
+
 
         const last = parsed.turns[parsed.turns.length - 1];
         const quick = last ? detect(last.text, etapaManual) : null;
