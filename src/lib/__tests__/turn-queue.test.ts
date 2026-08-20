@@ -79,3 +79,40 @@ describe("recomendações obsoletas", () => {
     expect(isStale({ sourceTurnId: 6, recommendationSequence: 2, createdAt: 1 }, atual, 6)).toBe(true);
   });
 });
+
+describe("call longa (simulação de 20 minutos)", () => {
+  it("nunca para de commitar turnos com silêncios, falas curtas e STT fora de ordem", () => {
+    const q = new TurnCommitQueue();
+    const commitados: number[] = [];
+    const emVoo: { id: number; fim: number }[] = [];
+    let relogio = 0;
+    let id = 0;
+
+    // ~20 min de call: uma fala a cada ~8s, latência de STT variável (fora de ordem)
+    while (relogio < 20 * 60 * 1000) {
+      id++;
+      relogio += 4000 + (id % 7) * 1500; // pausas curtas e longas
+      const curta = id % 5 === 0;
+      const latencia = curta ? 400 : 900 + ((id * 733) % 2500); // respostas fora de ordem
+      emVoo.push({ id, fim: relogio + latencia });
+      emVoo
+        .filter((r) => r.fim <= relogio)
+        .sort((a, b) => a.fim - b.fim)
+        .forEach((r) => {
+          emVoo.splice(emVoo.indexOf(r), 1);
+          for (const t of q.push({ turnId: r.id, text: `fala ${r.id}` })) commitados.push(t.turnId);
+        });
+    }
+    emVoo
+      .sort((a, b) => a.fim - b.fim)
+      .forEach((r) => {
+        for (const t of q.push({ turnId: r.id, text: `fala ${r.id}` })) commitados.push(t.turnId);
+      });
+
+    expect(commitados.length).toBe(id);
+    expect(commitados).toEqual([...commitados].sort((a, b) => a - b));
+    expect(commitados[0]).toBe(1);
+    expect(commitados.at(-1)).toBe(id);
+    expect(id).toBeGreaterThan(100);
+  });
+});

@@ -305,6 +305,7 @@ const STATUS_TEXT = {
   ouvindo: "COPILOTO ATIVO — OUVINDO",
   falando: "Cliente falando…",
   transcrevendo: "Processando…",
+  recuperando: "Reconectando a captura da aba…",
 };
 
 function setRunning(on) {
