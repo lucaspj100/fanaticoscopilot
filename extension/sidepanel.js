@@ -168,6 +168,8 @@ function renderDecision(d) {
 
   if (d.orientacao) linhas.push(["orientation", d.orientacao]);
   if (d.frase) linhas.push(["suggested_phrase", d.frase]);
+  if (d.porque) linhas.push(["porque", d.porque]);
+  if (d.acao) linhas.push(["acao", d.acao]);
   if (d.motivo) linhas.push(["Motivo", d.motivo]);
   if (d.aviso) linhas.push(["Aviso", d.aviso]);
   if (d.debug) linhas.push(["payload", JSON.stringify(d.debug).slice(0, 400)]);
@@ -283,8 +285,12 @@ function buildCard(card) {
     <div class="tag"><span class="rotulo"></span><span class="etapa"></span></div>
     <div class="orient"></div>
     <div class="frase-wrap" hidden>
-      <div class="frase-label">FALE:</div>
+      <div class="frase-label">FALE AGORA</div>
       <div class="frase" title="Clique para copiar"></div>
+    </div>
+    <div class="porque-wrap" hidden>
+      <div class="frase-label">POR QUÊ</div>
+      <div class="porque"></div>
     </div>
     <div class="meta"></div>`;
   return el;
@@ -305,6 +311,15 @@ function fillCard(el, card) {
   } else {
     wrap.hidden = true;
   }
+
+  const pq = el.querySelector(".porque-wrap");
+  if (card.porque) {
+    pq.hidden = false;
+    el.querySelector(".porque").textContent = card.porque;
+  } else {
+    pq.hidden = true;
+  }
+
   el.querySelector(".meta").textContent =
     card.fonte === "ia" ? `frase da IA · ${card.ms ?? "?"} ms` : "alerta instantâneo · aguardando frase…";
 }

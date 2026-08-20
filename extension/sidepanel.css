@@ -94,6 +94,9 @@ main { display: flex; flex-direction: column; gap: 10px; flex: 1; }
   font-size: 15px;
   cursor: pointer;
 }
+.card .porque-wrap { margin-top: 10px; }
+.card .porque { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
 .card .meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
 
 .transcript h2 { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin: 0 0 6px; }

@@ -69,6 +69,8 @@
       font-size: 19px; line-height: 1.4; font-weight: 500;
     }
     .frase b { display: block; font-size: 10px; letter-spacing: .16em; color: rgba(242,247,251,.5); margin-bottom: 3px; font-weight: 800; }
+    .porque { margin-top: 7px; font-size: 12.5px; line-height: 1.4; color: rgba(242,247,251,.6); }
+    .porque b { font-size: 10px; letter-spacing: .16em; font-weight: 800; color: rgba(242,247,251,.45); margin-right: 6px; }
     .idle { color: rgba(242,247,251,.45); font-size: 14px; }
   </style>
   <div class="wrap" part="wrap">
@@ -83,7 +85,8 @@
     </div>
     <div class="body" id="body">
       <div class="orient idle" id="orient">Aguardando a fala do cliente…</div>
-      <div class="frase" id="frase" hidden><b>FALE</b><span id="frase-txt"></span></div>
+      <div class="frase" id="frase" hidden><b>FALE AGORA</b><span id="frase-txt"></span></div>
+      <div class="porque" id="porque" hidden><b>POR QUÊ</b><span id="porque-txt"></span></div>
     </div>
   </div>`;
 
@@ -152,6 +155,13 @@
     } else {
       frase.hidden = true;
     }
+    const porque = $("porque");
+    if (card.porque) {
+      porque.hidden = false;
+      $("porque-txt").textContent = card.porque;
+    } else {
+      porque.hidden = true;
+    }
     wrap.classList.remove("min");
   }
 
@@ -163,6 +173,7 @@
     orient.textContent = texto;
     orient.classList.add("idle");
     $("frase").hidden = true;
+    $("porque").hidden = true;
   }
 
   function novoTurno(turnId) {
@@ -183,7 +194,12 @@
     }
 
     if (atual && atual.turnId === turnId && atual.card.tipo === card.tipo) {
-      const merged = { ...atual.card, ...card, frase: card.frase || atual.card.frase };
+      const merged = {
+        ...atual.card,
+        ...card,
+        frase: card.frase || atual.card.frase,
+        porque: card.porque || atual.card.porque,
+      };
       atual = { card: merged, turnId };
       paint(merged);
       return;

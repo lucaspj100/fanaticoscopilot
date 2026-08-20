@@ -57,6 +57,8 @@ const MEMORIA_VAZIA = {
   spinImplicacoes: [],
   spinNecessidade: null,
   spinPerguntasJaExploradas: [],
+  // Mapa vivo do cliente (V2.6) — preenchido pelo /api/public/memory.
+  mapa: {},
 };
 
 let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
@@ -382,6 +384,9 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
           etapa: etapaManual,
           orientacao: card.orientacao,
           frase: card.frase,
+          porque: card.porque,
+          acao: card.acao,
+          lacunas: card.lacunas,
           confianca: card.confianca,
           aviso: card.aviso,
           etapaManual,
