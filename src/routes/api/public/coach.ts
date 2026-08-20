@@ -291,6 +291,16 @@ export const Route = createFileRoute("/api/public/coach")({
           (etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa);
 
 
+        const DI_STATUS_POR_TIPO: Record<string, string> = {
+          di_resistencia: "resistencia",
+          di_criterios: "criterios_identificados",
+          di_comparacao: "resistencia_persistente",
+          di_pede_apresentacao: "apresentada",
+          di_estabelecida: "estabelecida",
+        };
+        const diStatus = isDI ? (diStatusIA ?? DI_STATUS_POR_TIPO[tipo] ?? null) : null;
+        if (isDI) debug["di_status"] = diStatus;
+
         const card = {
           tipo,
           etapa,
@@ -299,6 +309,7 @@ export const Route = createFileRoute("/api/public/coach")({
           orientacao: orientacaoIA?.trim() || base.orientacao,
           confianca,
           decisao,
+          diStatus,
           fonte: "ia" as const,
         };
 
@@ -319,17 +330,17 @@ export const Route = createFileRoute("/api/public/coach")({
         try {
           const res = await callAI(
             [
-              { role: "system", content: COACH_SYSTEM },
+              { role: "system", content: isDI ? `${COACH_SYSTEM}\n\n${DI_COACH_EXTRA}` : COACH_SYSTEM },
               {
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
               },
             ],
-
             key,
           );
+
 
           if (!res.ok) {
             return Response.json(
