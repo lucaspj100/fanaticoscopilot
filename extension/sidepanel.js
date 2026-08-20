@@ -330,6 +330,12 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);
   if (msg?.type === "COPILOT_DECISION") renderDecision(msg.decision);
+  if (msg?.type === "COPILOT_MEMORY") {
+    memoriaAt = msg.at || null;
+    renderMemoria(msg.memoria, msg.alterados || []);
+  }
+  if (msg?.type === "COPILOT_ETAPA" && msg.from === "overlay") setEtapa(msg.etapa, { broadcast: false });
+
   if (msg?.type === "COPILOT_STATUS") {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }
