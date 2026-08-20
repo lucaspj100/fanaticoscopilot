@@ -242,8 +242,16 @@ export const Route = createFileRoute("/api/public/coach")({
                 sinal_baseado_em: "processo",
                 motivo_silencio: "alerta de processo sem evidência da fala do vendedor",
               });
+            if (isDI && !DI_TIPOS.has(t) && !CRITICOS_SEMPRE.has(t))
+              return nada("FORA_DA_ETAPA_DI", {
+                ...debug,
+                confianca,
+                tipoSugerido: t,
+                motivo_silencio: "assunto não estabelece a Regra do Jogo",
+              });
             if (!(t in FALLBACKS))
               return nada("PARSE_ERROR", { ...debug, tipoInvalido: t, motivo_silencio: "tipo inválido" });
+
             if (confianca < threshold(t))
               return nada("LOW_CONFIDENCE", {
                 ...debug,
