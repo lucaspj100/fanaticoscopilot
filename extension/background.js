@@ -94,6 +94,10 @@ async function pickTargetTab() {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // espelha os cards no overlay compacto (modo teleprompter)
   if (msg?.type === "COPILOT_CARD") toOverlay(msg);
+  // ciclo de vida do turno: overlay precisa invalidar o card anterior
+  if (msg?.type === "COPILOT_TURN_START" || msg?.type === "COPILOT_TRANSCRIPT" || msg?.type === "COPILOT_DECISION") {
+    toOverlay(msg);
+  }
   // etapa manual: sidepanel -> overlay (do overlay já chega direto nas páginas da extensão)
   if (msg?.type === "COPILOT_ETAPA" && msg.from !== "overlay") toOverlay(msg);
 
