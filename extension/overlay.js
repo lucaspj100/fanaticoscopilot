@@ -68,7 +68,9 @@
   <div class="wrap" part="wrap">
     <div class="bar" id="bar">
       <span class="rotulo" id="rotulo">UNITED COPILOT</span>
+      <span class="etapa" id="etapa">RAPPORT</span>
       <span class="spacer"></span>
+
       <button class="ctrl" id="reset" title="Voltar à posição padrão">⌖</button>
       <button class="ctrl" id="min" title="Minimizar">–</button>
       <button class="ctrl" id="close" title="Fechar">✕</button>
