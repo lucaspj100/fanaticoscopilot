@@ -93,6 +93,7 @@ export const SLOTS: Record<SlotKey, SlotMeta> = {
     respondido: [
       /\b(travo|travei|trava|n[ãa]o consigo (falar|conversar|responder)|entendo mas n[ãa]o falo|me perco|fico perdid[oa]|gaguejo|bloqueio|inseguran[çc]a|fico insegur[oa]|passo vergonha|passei vergonha)\b/i,
       /\b(meu ingl[êe]s (é|e|t[áa]) (b[áa]sico|fraco|ruim|travado))\b/i,
+      /\b(fico boiando|n[ãa]o conduzo|n[ãa]o consigo (conduzir|assumir) (a )?(reuni[ãa]o|conversa|cliente))\b/i,
     ],
     parcial: [/\b(preciso (melhorar|do ingl[êe]s)|quero aprender ingl[êe]s)\b/i],
     alvo: [/(o que.*(trava|dificulta|atrapalha)|qual.*(dificuldade|problema)|onde.*(trava|te limita))/i],
@@ -102,6 +103,7 @@ export const SLOTS: Record<SlotKey, SlotMeta> = {
     prioridade: 4,
     respondido: [
       /\b(evito|evitei|deixo de|deixei de|n[ãa]o participo|fiquei de fora|me tiraram|sa[íi] da reuni[ãa]o|n[ãa]o fui|me atrapalha (no|na) (trabalho|reuni[ãa]o|empresa))\b/i,
+      /\b(dependo (d[aoe]|da|do)|fico dependente|preciso (que alguém|de alguém) (traduza|fale|me ajude)|algu[ée]m (traduz|fala) por mim)\b/i,
     ],
     alvo: [/(impacta|impacto|o que isso (te )?(custa|causa)|como isso (te )?atrapalha|consequ[êe]ncia)/i],
   },
