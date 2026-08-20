@@ -19,7 +19,51 @@ const els = {
   decision: document.getElementById("decision"),
   turno: document.getElementById("turno"),
   memoria: document.getElementById("memoria"),
+  health: document.getElementById("health"),
+  healthFlag: document.getElementById("health-flag"),
 };
+
+/* ---------- diagnóstico do pipeline: CAPTURA / TRANSCRIÇÃO / COPILOT ---------- */
+
+function segs(ms) {
+  if (ms == null) return "—";
+  return ms < 1000 ? `${ms} ms atrás` : `${(ms / 1000).toFixed(1)} s atrás`;
+}
+
+function renderHealth(h) {
+  if (!h) return;
+  const a = h.audio || {};
+  const audioOk = h.running && a.msSinceChunk != null && a.msSinceChunk < 5000;
+  const linhas = [
+    ["CAPTURA — áudio chegando", audioOk ? "SIM" : "NÃO"],
+    ["CAPTURA — último chunk", segs(a.msSinceChunk)],
+    ["CAPTURA — chunks recebidos", String(a.audioChunksReceived ?? 0)],
+    ["CAPTURA — AudioContext", h.audioContext || "—"],
+    ["CAPTURA — track", h.track?.present ? `${h.track.readyState}${h.track.muted ? " (mudo)" : ""}` : "ausente"],
+    ["CAPTURA — VAD início/fim", `${a.vadSpeechStartCount ?? 0} / ${a.vadSpeechEndCount ?? 0}`],
+    ["TRANSCRIÇÃO — último transcript", segs(a.msSinceTranscript)],
+    ["TRANSCRIÇÃO — transcript_final", String(a.transcriptFinalCount ?? 0)],
+    ["TRANSCRIÇÃO — STT pendentes", String(a.sttPending ?? 0)],
+    ["TRANSCRIÇÃO — STT ok/falhas", `${a.sttRequestsCompleted ?? 0} / ${a.sttRequestsFailed ?? 0}`],
+    ["COPILOT — última decisão", segs(a.msSinceDecision)],
+    ["COPILOT — último turno commitado", String(h.turnos?.lastCommittedTurnId ?? 0)],
+    ["COPILOT — turnos na fila", String(h.turnos?.pendentes ?? 0)],
+    ["COPILOT — memória atualizada", String(a.memoryUpdates ?? 0)],
+    ["RECUPERAÇÕES", String(a.recoveries ?? 0)],
+  ];
+  els.health.replaceChildren(
+    ...linhas.map(([k, v]) => {
+      const li = document.createElement("li");
+      li.textContent = k;
+      const b = document.createElement("b");
+      b.textContent = v;
+      li.appendChild(b);
+      return li;
+    }),
+  );
+  const problema = h.alerta || h.recuperando || h.falhaRecuperacao || (h.running && !audioOk ? "captura sem áudio" : null);
+  els.healthFlag.textContent = problema ? `· ⚠ ${problema}` : h.running ? "· ok" : "";
+}
 
 /* ---------- etapa manual da call (fonte da verdade) ---------- */
 
@@ -406,6 +450,13 @@ chrome.runtime.onMessage.addListener((msg) => {
     renderTiming(msg.timing);
   }
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);
+  if (msg?.type === "COPILOT_HEALTH") {
+    renderHealth(msg.health);
+    const h = msg.health || {};
+    if (h.evento || h.alerta || h.recuperando || h.falhaRecuperacao) {
+      CopilotLog.add("pipeline_health", h);
+    }
+  }
   if (msg?.type === "COPILOT_DECISION") {
     CopilotLog.decision(msg.decision);
     renderDecision(msg.decision);
