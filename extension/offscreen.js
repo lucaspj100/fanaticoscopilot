@@ -62,6 +62,8 @@ function resetSessao() {
   memoriaInFlight = false;
   preAlertTipo = null;
   preAlertAt = null;
+  turnSeq = 0;
+  currentTurnId = 0;
   emitMemoria([]);
 }
 
