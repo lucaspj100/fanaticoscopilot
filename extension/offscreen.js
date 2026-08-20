@@ -60,14 +60,15 @@ const MEMORIA_VAZIA = {
 };
 
 let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
-let memoria = { ...MEMORIA_VAZIA };
+const novaMemoria = () => JSON.parse(JSON.stringify(MEMORIA_VAZIA));
+let memoria = novaMemoria();
 let memoriaAt = null;
 let memoriaInFlight = false;
 let sugestoesAnteriores = []; // últimas frases sugeridas — evita repetir pergunta
 
 function resetSessao() {
   turns.length = 0;
-  memoria = { ...MEMORIA_VAZIA, etapaAtual: etapaManual };
+  memoria = { ...novaMemoria(), etapaAtual: etapaManual };
   memoriaAt = null;
   memoriaInFlight = false;
   sugestoesAnteriores = [];
@@ -394,6 +395,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
       })
       .catch(() => {});
     if (card.spinStatus) memoria.spinStatus = card.spinStatus;
+    if (!Array.isArray(memoria.spinPerguntasJaExploradas)) memoria.spinPerguntasJaExploradas = [];
     if (card.eixo) {
       const eixo = String(card.eixo).toLowerCase();
       if (!memoria.spinPerguntasJaExploradas.some((x) => x.toLowerCase() === eixo)) {
