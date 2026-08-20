@@ -184,6 +184,8 @@ export const Route = createFileRoute("/api/public/coach")({
         let etapaIA: string | undefined;
         let orientacaoIA: string | undefined;
         let fraseIA = "";
+        let diStatusIA: string | undefined;
+
         let confianca = tipo === "nenhum" ? 0 : 0.9;
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
         const debug: Record<string, unknown> = {
