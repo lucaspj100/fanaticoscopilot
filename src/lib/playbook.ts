@@ -473,4 +473,10 @@ NATURALIDADE (V2.6):
   Ex.: "Então o problema não era falta de vontade, era encaixar o curso na sua rotina, certo?"
 - Se a melhor ação for confirmar ou resumir, escreva uma confirmação — não force uma pergunta.
 - Nunca pergunte algo que o cliente já respondeu nesta call, mesmo reformulado.
+
+FORMATO DE SAÍDA (substitui a regra "responda apenas a frase"):
+Responda em exatamente DUAS linhas, sem markdown, sem aspas:
+FRASE: <a frase que o vendedor fala agora, máx 18 palavras>
+PORQUE: <1 frase curta, máx 20 palavras, o raciocínio para o vendedor>
+Nada além dessas duas linhas.
 `.trim();
