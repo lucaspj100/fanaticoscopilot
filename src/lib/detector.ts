@@ -209,6 +209,53 @@ const DI_RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   },
 ];
 
+/**
+ * Regras que SÓ valem quando o vendedor marcou a etapa SPIN.
+ * Classificam o QUE o cliente acabou de entregar (objetivo, problema ou
+ * implicação). A próxima pergunta é escolhida pela progressão, não pelo assunto.
+ */
+const SPIN_RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
+  {
+    // Consequência concreta já entregue → confirmar e avançar.
+    tipo: "spin_confirmacao",
+    patterns: [
+      /\b(perdi|deixei de|abri m[ãa]o|fiquei de fora|me tiraram|n[ãa]o consegui) \w+/i,
+      /\b(j[áa] perdi|j[áa] deixei de)\b/i,
+      /\b(me custou|custou caro|atrasou minha|travou minha)\b/i,
+    ],
+  },
+  {
+    // Problema atual explícito → falta a implicação.
+    tipo: "spin_implicacao",
+    patterns: [
+      /\b(travo|trava|congelo|bloqueio|gaguejo|me perco|n[ãa]o consigo (falar|responder|acompanhar))\b/i,
+      /\b(entendo|leio) mas n[ãa]o (falo|consigo falar)/i,
+      /\b(reuni[ãa]o|call|entrevista|apresenta[çc][ãa]o)\b[^.]{0,40}\b(ingl[êe]s|dif[íi]cil|complicad)/i,
+      /\bmeu ingl[êe]s [ée] (b[áa]sico|fraco|ruim|travado)\b/i,
+    ],
+  },
+  {
+    // Objetivo claro → falta o problema atual.
+    tipo: "spin_problema",
+    patterns: [
+      /\b(ganhar|receber|faturar|sal[áa]rio) em (d[óo]lar|euro|moeda)/i,
+      /\b(trabalhar|morar|viajar) (fora|no exterior|nos eua|em outro pa[íi]s)/i,
+      /\b(promo[çc][ãa]o|pr[óo]ximo n[íi]vel|nova oportunidade|mudar de [áa]rea|crescer na carreira)\b/i,
+      /\bquero (ganhar|conquistar|chegar|alcan[çc]ar|assumir)\b/i,
+    ],
+  },
+  {
+    // Resposta genérica → ainda falta o objetivo real.
+    tipo: "spin_objetivo",
+    patterns: [
+      /\b(quero|preciso) (aprender|falar|melhorar|destravar) (o )?ingl[êe]s\b/i,
+      /\b(sempre quis|sempre tive vontade|[ée] importante hoje em dia)\b/i,
+      /\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i,
+    ],
+  },
+];
+
+
 
 export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo">> = {
   rapport_longo: {
