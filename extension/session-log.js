@@ -19,13 +19,14 @@ const MEM_FIELDS = [
   "diStatus",
   "diMotivoResistencia",
   "diCriteriosParaDecidir",
+  "mapa",
 ];
 
 function memSnapshot(memoria) {
   const out = {};
   for (const k of MEM_FIELDS) {
     const v = memoria?.[k];
-    out[k] = Array.isArray(v) ? [...v] : (v ?? null);
+    out[k] = Array.isArray(v) ? [...v] : v && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : (v ?? null);
   }
   return out;
 }
@@ -142,6 +143,8 @@ const CopilotLog = {
       nivel: card.nivel,
       orientacao: card.orientacao,
       frase: card.frase || null,
+      porque: card.porque || null,
+      acao: card.acao || null,
       fonte: card.fonte,
       ms: card.ms ?? null,
     };
@@ -165,6 +168,9 @@ const CopilotLog = {
       etapaManual: d.etapaManual || this.etapa,
       orientacao: d.orientacao || null,
       frase: d.frase || null,
+      porque: d.porque || null,
+      acao: d.acao || null,
+      lacunas: d.lacunas || null,
       confianca: d.confianca ?? null,
       motivo_intervencao: debug.motivo_intervencao ?? null,
       motivo_silencio: debug.motivo_silencio ?? d.motivo ?? null,

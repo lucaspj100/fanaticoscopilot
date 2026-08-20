@@ -75,6 +75,20 @@ function renderMemoria(memoria, alterados = []) {
     return txt ? [k, label, txt] : null;
   }).filter(Boolean);
 
+  // Mapa vivo do cliente (V2.6) — o que já sabemos e o que ainda falta.
+  const mapa = memoria?.mapa || {};
+  const faltando = [];
+  for (const [slot, dado] of Object.entries(mapa)) {
+    const rot = slot.replace(/_/g, " ").toUpperCase();
+    if (!dado || dado.estado === "nao_explorado") {
+      faltando.push(rot.toLowerCase());
+      continue;
+    }
+    const sufixo = dado.estado === "parcial" ? " (parcial)" : "";
+    linhas.push([`mapa.${slot}`, rot + sufixo, dado.valor || "sim"]);
+  }
+  if (faltando.length) linhas.push(["mapa.lacunas", "AINDA NÃO EXPLORADO", faltando.slice(0, 6).join(" · ")]);
+
   if (!linhas.length) {
     const p = document.createElement("li");
     p.className = "vazio";
@@ -168,6 +182,8 @@ function renderDecision(d) {
 
   if (d.orientacao) linhas.push(["orientation", d.orientacao]);
   if (d.frase) linhas.push(["suggested_phrase", d.frase]);
+  if (d.porque) linhas.push(["porque", d.porque]);
+  if (d.acao) linhas.push(["acao", d.acao]);
   if (d.motivo) linhas.push(["Motivo", d.motivo]);
   if (d.aviso) linhas.push(["Aviso", d.aviso]);
   if (d.debug) linhas.push(["payload", JSON.stringify(d.debug).slice(0, 400)]);
@@ -283,8 +299,12 @@ function buildCard(card) {
     <div class="tag"><span class="rotulo"></span><span class="etapa"></span></div>
     <div class="orient"></div>
     <div class="frase-wrap" hidden>
-      <div class="frase-label">FALE:</div>
+      <div class="frase-label">FALE AGORA</div>
       <div class="frase" title="Clique para copiar"></div>
+    </div>
+    <div class="porque-wrap" hidden>
+      <div class="frase-label">POR QUÊ</div>
+      <div class="porque"></div>
     </div>
     <div class="meta"></div>`;
   return el;
@@ -305,6 +325,15 @@ function fillCard(el, card) {
   } else {
     wrap.hidden = true;
   }
+
+  const pq = el.querySelector(".porque-wrap");
+  if (card.porque) {
+    pq.hidden = false;
+    el.querySelector(".porque").textContent = card.porque;
+  } else {
+    pq.hidden = true;
+  }
+
   el.querySelector(".meta").textContent =
     card.fonte === "ia" ? `frase da IA · ${card.ms ?? "?"} ms` : "alerta instantâneo · aguardando frase…";
 }

@@ -2,9 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
+import { SLOTS, fraseRepetida, type SlotKey } from "@/lib/mapa";
 import {
   camposPreenchidos,
   derivarSpinStatus,
+  lacunasDaMemoria,
+  mapaDaMemoria,
   memoriaParaPrompt,
   normalizarMemoria,
   spinSuficiente,
@@ -12,6 +15,8 @@ import {
 import {
   CLASSIFY_SYSTEM,
   COACH_SYSTEM,
+  DECISION_EXTRA,
+  NATURALIDADE_EXTRA,
   DI_CLASSIFY_SYSTEM,
   DI_COACH_EXTRA,
   RULE_SNIPPETS,
@@ -180,12 +185,26 @@ export const Route = createFileRoute("/api/public/coach")({
             }`
           : "";
 
+        // ---- Mapa vivo do cliente: o que já sabemos e o que ainda falta.
+        const mapaTexto = mapaDaMemoria(memoria);
+        const faltando = lacunasDaMemoria(memoria) as SlotKey[];
+        const blocoMapa = `\n\nMAPA VIVO DO CLIENTE (tudo que já foi descoberto nesta call — nunca pergunte de novo o que está como respondido):\n${
+          mapaTexto || "(ainda vazio)"
+        }\nPRÓXIMAS LACUNAS REAIS: ${faltando.slice(0, 4).map((k) => SLOTS[k].rotulo.toLowerCase()).join(", ") || "nenhuma"}`;
+
         const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
         const blocoSugestoes = sugestoes.length
           ? `\n\nFRASES JÁ SUGERIDAS AO VENDEDOR (não repita nem reformule):\n${sugestoes
               .map((s) => `- ${s}`)
               .join("\n")}`
           : "";
+
+        // Anti-interrogatório: perguntas seguidas viram pressão. Prefira validar/confirmar.
+        const perguntasSeguidas = sugestoes.filter((s) => s.trim().endsWith("?")).length;
+        const blocoRitmo =
+          perguntasSeguidas >= 2
+            ? "\n\nRITMO: o vendedor já fez várias perguntas seguidas. Prefira confirmar, resumir, validar ou conectar antes de perguntar de novo."
+            : "";
 
 
         const ms = () => Date.now() - started;
@@ -227,6 +246,8 @@ export const Route = createFileRoute("/api/public/coach")({
         let fraseIA = "";
         let diStatusIA: string | undefined;
         let eixoIA: string | undefined;
+        let acaoIA: string | undefined;
+        let porqueIA: string | undefined;
 
 
         let confianca = tipo === "nenhum" ? 0 : 0.9;
@@ -248,11 +269,13 @@ export const Route = createFileRoute("/api/public/coach")({
               [
                 {
                   role: "system",
-                  content: isDI ? DI_CLASSIFY_SYSTEM : isSpin ? SPIN_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM,
+                  content: `${
+                    isDI ? DI_CLASSIFY_SYSTEM : isSpin ? SPIN_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM
+                  }\n\n${DECISION_EXTRA}\n\nInclua também no JSON: "acao" (uma das ações possíveis) e "porque" (1 frase curta).`,
                 },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -326,6 +349,20 @@ export const Route = createFileRoute("/api/public/coach")({
             debug["confianca"] = confianca;
             if (typeof obj["diStatus"] === "string") diStatusIA = obj["diStatus"] as string;
             if (typeof obj["eixo"] === "string") eixoIA = (obj["eixo"] as string).slice(0, 40);
+            if (typeof obj["acao"] === "string") acaoIA = (obj["acao"] as string).slice(0, 30);
+            if (typeof obj["porque"] === "string") porqueIA = (obj["porque"] as string).trim().slice(0, 180);
+
+            // Trava semântica: a frase tenta descobrir algo que o cliente já respondeu.
+            const repetiu = fraseRepetida(memoria.mapa, fraseIA);
+            if (repetiu)
+              return nada("PERGUNTA_JA_RESPONDIDA", {
+                ...debug,
+                confianca,
+                tipoSugerido: t,
+                slotRepetido: repetiu,
+                fraseDescartada: fraseIA,
+                motivo_silencio: `${SLOTS[repetiu].rotulo.toLowerCase()} já foi respondido nesta call`,
+              });
 
           } catch (e) {
             return nada("PARSE_ERROR", {
@@ -373,6 +410,9 @@ export const Route = createFileRoute("/api/public/coach")({
           diStatus,
           spinStatus,
           eixo: eixoIA ?? null,
+          acao: acaoIA ?? null,
+          porque: porqueIA ?? null,
+          lacunas: faltando.slice(0, 4),
           fonte: "ia" as const,
         };
 
@@ -395,17 +435,19 @@ export const Route = createFileRoute("/api/public/coach")({
             [
               {
                 role: "system",
-                content: isDI
-                  ? `${COACH_SYSTEM}\n\n${DI_COACH_EXTRA}`
-                  : isSpin
-                    ? `${COACH_SYSTEM}\n\n${SPIN_COACH_EXTRA}`
-                    : COACH_SYSTEM,
+                content: `${
+                  isDI
+                    ? `${COACH_SYSTEM}\n\n${DI_COACH_EXTRA}`
+                    : isSpin
+                      ? `${COACH_SYSTEM}\n\n${SPIN_COACH_EXTRA}`
+                      : COACH_SYSTEM
+                }\n\n${NATURALIDADE_EXTRA}`,
               },
               {
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
               },
             ],
             key,
@@ -427,13 +469,29 @@ export const Route = createFileRoute("/api/public/coach")({
           }
 
           const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-          const raw = clean(data.choices?.[0]?.message?.content ?? "");
+          const bruto = data.choices?.[0]?.message?.content ?? "";
+          const linhas = bruto
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+          const linhaFrase = linhas.find((l) => /^frase\s*:/i.test(l)) ?? linhas[0] ?? "";
+          const linhaPorque = linhas.find((l) => /^porqu[eê]\s*:/i.test(l)) ?? "";
+          const raw = clean(linhaFrase.replace(/^frase\s*:\s*/i, ""));
+          const porqueFinal =
+            porqueIA ?? (linhaPorque ? linhaPorque.replace(/^porqu[eê]\s*:\s*/i, "").slice(0, 180) : null);
           debug["fraseRaw"] = raw;
           // Saída truncada/vazia cai na frase do playbook.
-          const frase = raw.length >= 12 ? raw : "";
+          let frase = raw.length >= 12 ? raw : base.frase;
+          const repetiuFinal = fraseRepetida(memoria.mapa, frase);
+          if (repetiuFinal) {
+            // Já respondido nesta call: não repetimos a pergunta — orientamos sem frase.
+            debug["fraseDescartada"] = frase;
+            debug["slotRepetido"] = repetiuFinal;
+            frase = "";
+          }
 
           return Response.json(
-            { ...card, frase: frase || base.frase, ms: ms(), iaMs: Date.now() - upstreamStart, debug },
+            { ...card, frase, porque: porqueFinal, ms: ms(), iaMs: Date.now() - upstreamStart, debug },
             { headers: CORS },
           );
         } catch (e) {
