@@ -576,6 +576,14 @@ export function rotaParaPrompt(d: Decisao): string {
   );
   linhas.push(`PROFUNDIDADE COMERCIAL ATUAL: ${d.profundidadeAtual}`);
   linhas.push(`PRÓXIMA AÇÃO: ${d.nextAction} — ${d.motivo}`);
+  if (d.contribuicao)
+    linhas.push(
+      "ESTA AÇÃO NÃO É UMA PERGUNTA: contribua com raciocínio, contexto, exemplo, analogia ou hipótese. A frase pode terminar sem '?'.",
+    );
+  if (d.dorAtual === "negada")
+    linhas.push(
+      "DOR ATUAL NEGADA: é PROIBIDO insistir em dor de hoje ou reformular \"onde o inglês te trava?\". Trabalhe ambição, futuro, timing e alcance.",
+    );
   linhas.push(`DESCOBRIR AGORA: ${d.informacaoQueQuerDescobrir}`);
   if (d.exemplo) linhas.push(`REFERÊNCIA DE FALA (não copie literalmente): ${d.exemplo}`);
   return linhas.join("\n");
