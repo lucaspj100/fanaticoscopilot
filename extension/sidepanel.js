@@ -404,16 +404,14 @@ function renderActive(state) {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
+  // Estado central: única origem do que o sidepanel mostra.
+  if (msg?.type === "COPILOT_ACTIVE_REC") renderActive(msg.state);
   if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) {
-    currentTurnId = 0;
-    atual = null;
     ultimaTranscricao = null;
+    seenSequence = -1;
     renderTurnoDiag();
   }
-  if (msg?.type === "COPILOT_CARD") {
-    CopilotLog.card(msg.card);
-    renderCard(msg.card);
-  }
+  if (msg?.type === "COPILOT_CARD") CopilotLog.card(msg.card);
   if (msg?.type === "COPILOT_TIMING") {
     CopilotLog.latency(msg.timing, msg.turnId);
     renderTiming(msg.timing);
@@ -422,14 +420,6 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_DECISION") {
     CopilotLog.decision(msg.decision);
     renderDecision(msg.decision);
-    const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
-    const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
-    if (turnId >= currentTurnId && semAcao && (!atual || atual.turnId <= turnId)) {
-      atual = null;
-      currentTurnId = Math.max(currentTurnId, turnId);
-      showEstado("Sem intervenção agora.", "silencio");
-      renderTurnoDiag();
-    }
   }
   if (msg?.type === "COPILOT_MEMORY") {
     memoriaAt = msg.at || null;
@@ -445,11 +435,9 @@ chrome.runtime.onMessage.addListener((msg) => {
     const turnId = msg.turnId ?? currentTurnId;
     // Histórico interno COMPLETO (a UI mostra só os últimos itens).
     CopilotLog.transcript({ turnId, text: msg.text, parcial: !!msg.parcial, ms: msg.ms });
-    // Transcrição COMPLETA de um turno novo encerra o card anterior na hora.
     if (msg.final) {
       ultimaTranscricao = { turnId, text: msg.text };
-      if (turnId > currentTurnId || (atual && atual.turnId < turnId)) invalidarTurno(turnId);
-      else renderTurnoDiag();
+      renderTurnoDiag();
     }
     const li = document.createElement("li");
     li.textContent = `#${turnId} ${msg.parcial ? "· " : ""}${msg.text}  (${msg.ms} ms)`;
@@ -457,6 +445,13 @@ chrome.runtime.onMessage.addListener((msg) => {
     while (els.transcript.children.length > 20) els.transcript.lastElementChild.remove();
   }
 });
+
+// Reload do sidepanel: recupera a recomendação atualmente válida.
+chrome.runtime
+  .sendMessage({ type: "GET_ACTIVE_RECOMMENDATION" })
+  .then((res) => res?.ok && renderActive(res.state))
+  .catch(() => {});
+
 
 /* ---------- exportação do teste da call ---------- */
 
