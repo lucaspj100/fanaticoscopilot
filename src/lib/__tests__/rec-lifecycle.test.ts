@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error módulo JS da extensão (sem tipos)
+// módulo JS da extensão (tipado em rec-lifecycle.d.ts)
 import {
   initialCtx,
   reduceCard,
