@@ -12,6 +12,14 @@ export type DiStatus =
   | "resistencia_persistente"
   | "estabelecida";
 
+export type SpinStatus =
+  | "nao_iniciado"
+  | "objetivo_identificado"
+  | "problema_identificado"
+  | "implicacao_identificada"
+  | "necessidade_identificada"
+  | "suficiente";
+
 export type Memoria = {
   etapaAtual: string | null;
   objetivo: string | null;
@@ -28,6 +36,14 @@ export type Memoria = {
   diStatus: DiStatus;
   diMotivoResistencia: string | null;
   diCriteriosParaDecidir: string[];
+  /** Estado do SPIN — objetivo → problema → implicação → necessidade → suficiente */
+  spinStatus: SpinStatus;
+  spinObjetivo: string | null;
+  spinProblema: string | null;
+  spinImplicacoes: string[];
+  spinNecessidade: string | null;
+  /** Eixos já explorados (ex.: impacto_financeiro) — nunca repetir o mesmo eixo. */
+  spinPerguntasJaExploradas: string[];
 };
 
 export const MEMORIA_VAZIA: Memoria = {
@@ -45,7 +61,14 @@ export const MEMORIA_VAZIA: Memoria = {
   diStatus: "nao_apresentada",
   diMotivoResistencia: null,
   diCriteriosParaDecidir: [],
+  spinStatus: "nao_iniciado",
+  spinObjetivo: null,
+  spinProblema: null,
+  spinImplicacoes: [],
+  spinNecessidade: null,
+  spinPerguntasJaExploradas: [],
 };
+
 
 const DI_STATUS: DiStatus[] = [
   "nao_apresentada",
