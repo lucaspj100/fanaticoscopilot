@@ -455,8 +455,10 @@ export function avaliarSpin(mapa: Mapa): AvaliacaoSpin {
   if (!necessidadeOk) faltando.push("necessidade / valor da mudança");
   if (!urgenciaOk) faltando.push("urgência ou gatilho de agora");
 
-  // Minimização recente derruba a confiança: só sai dela com impacto ou gatilho forte.
-  if (minimizou && !(impactoOk && (necessidadeOk || urgenciaOk))) {
+  // Minimização derruba a confiança: enquanto ela estiver no mapa, o SPIN não fecha.
+  // Só sai dela quando o cliente traz um exemplo concreto novo — que reabre impacto/gatilho
+  // e limpa o slot de minimização (ver aplicarPatchMapa).
+  if (minimizou) {
     return {
       suficiente: false,
       condicao: null,
@@ -465,6 +467,7 @@ export function avaliarSpin(mapa: Mapa): AvaliacaoSpin {
       minimizou,
     };
   }
+
 
   if (problemaOk && impactoOk && necessidadeOk)
     return { suficiente: true, condicao: "A", faltando: [], motivo: "problema + impacto + necessidade", minimizou };
