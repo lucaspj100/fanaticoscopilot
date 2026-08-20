@@ -335,20 +335,26 @@ export function inferirMapa(text: string): Partial<Record<SlotKey, Slot>> {
     const meta = SLOTS[k];
     const trecho = (meta.respondido ?? []).map((re) => t.match(re)?.[0]).find(Boolean);
     if (trecho) {
-      out[k] = { estado: "respondido", valor: t.slice(0, 120) };
+      out[k] = { estado: "respondido", valor: t.slice(0, 120), profundidade: profundidadeDe(t) };
       continue;
     }
     const parcial = (meta.parcial ?? []).some((re) => re.test(t));
-    if (parcial) out[k] = { estado: "parcial", valor: t.slice(0, 120) };
+    if (parcial) out[k] = { estado: "parcial", valor: t.slice(0, 120), profundidade: "baixa" };
   }
   // "Já fiz inglês, mas tive que parar" → experiência respondida, motivo parcial.
   if (out.motivo_interrupcao?.estado === "respondido" && !out.experiencia_anterior) {
-    out.experiencia_anterior = { estado: "respondido", valor: t.slice(0, 120) };
+    out.experiencia_anterior = { estado: "respondido", valor: t.slice(0, 120), profundidade: profundidadeDe(t) };
+  }
+  // Cliente minimizou a dor: nada nesta fala vira impacto/urgência profundos.
+  if (out.minimizacao?.estado === "respondido") {
+    for (const k of ["impacto", "urgencia", "necessidade"] as SlotKey[]) {
+      if (out[k]) out[k] = { ...(out[k] as Slot), estado: "parcial", profundidade: "baixa" };
+    }
   }
   return out;
 }
 
-/** Aplica um patch no mapa. O estado NUNCA retrocede. */
+/** Aplica um patch no mapa. O estado NUNCA retrocede, a profundidade só sobe. */
 export function aplicarPatchMapa(
   atual: Mapa,
   patch: unknown,
@@ -362,8 +368,11 @@ export function aplicarPatchMapa(
     const antigo = atual[k] ?? { estado: "nao_explorado", valor: null };
     const estado: SlotEstado = ORDEM[novo.estado] > ORDEM[antigo.estado] ? novo.estado : antigo.estado;
     const valor = antigo.valor && ORDEM[novo.estado] <= ORDEM[antigo.estado] ? antigo.valor : (novo.valor ?? antigo.valor);
-    if (estado !== antigo.estado || valor !== antigo.valor) {
-      mapa[k] = { estado, valor };
+    const pAntiga = antigo.profundidade ?? "baixa";
+    const pNova = novo.profundidade ?? profundidadeDe(novo.valor);
+    const profundidade: Profundidade = PROF_ORDEM[pNova] > PROF_ORDEM[pAntiga] ? pNova : pAntiga;
+    if (estado !== antigo.estado || valor !== antigo.valor || profundidade !== antigo.profundidade) {
+      mapa[k] = { estado, valor, profundidade };
       alterados.push(k);
     }
   }
@@ -378,7 +387,7 @@ function normalizarPatch(patch: unknown): Partial<Record<SlotKey, Slot>> {
     const raw = o[k];
     if (raw == null) continue;
     if (typeof raw === "string") {
-      out[k] = { estado: "respondido", valor: texto(raw) };
+      out[k] = { estado: "respondido", valor: texto(raw), profundidade: profundidadeDe(texto(raw)) };
       continue;
     }
     if (typeof raw === "object") {
@@ -386,11 +395,93 @@ function normalizarPatch(patch: unknown): Partial<Record<SlotKey, Slot>> {
       const estado = estadoVal(r["estado"]);
       const valor = texto(r["valor"]);
       if (!estado && !valor) continue;
-      out[k] = { estado: estado ?? "respondido", valor };
+      out[k] = {
+        estado: estado ?? "respondido",
+        valor,
+        profundidade: profVal(r["profundidade"]) ?? profundidadeDe(valor),
+      };
     }
   }
   return out;
 }
+
+/* ------------------------------------------------------------------
+ * V2.7 — SPIN SUFICIENTE POR PROFUNDIDADE, NÃO POR CAMPOS PREENCHIDOS
+ * ------------------------------------------------------------------ */
+
+export type AvaliacaoSpin = {
+  suficiente: boolean;
+  condicao: "A" | "B" | "C" | null;
+  faltando: string[];
+  motivo: string;
+  /** Cliente minimizou a dor e isso ainda não foi superado. */
+  minimizou: boolean;
+};
+
+const forte = (s?: Slot) =>
+  !!s && s.estado === "respondido" && PROF_ORDEM[s.profundidade ?? "baixa"] >= PROF_ORDEM["media"];
+
+const profundo = (s?: Slot) => !!s && s.estado === "respondido" && (s.profundidade ?? "baixa") === "alta";
+
+/**
+ * O SPIN só termina quando há MATERIAL COMERCIAL — não quando há campos preenchidos.
+ * Condição A: problema relevante + impacto concreto + necessidade percebida.
+ * Condição B: problema relevante + urgência/gatilho forte + intenção clara.
+ * Condição C: o próprio cliente entregou objetivo + problema + consequência + razão para agir.
+ */
+export function avaliarSpin(mapa: Mapa): AvaliacaoSpin {
+  const m = mapa ?? novoMapa();
+  const objetivo = m.objetivo;
+  const problema = m.problema;
+  const impacto = m.impacto;
+  const necessidade = m.necessidade;
+  const urgencia = m.urgencia;
+  const gatilho = m.gatilho_agora;
+  const perdida = m.oportunidade_perdida;
+
+  const minimizou = m.minimizacao?.estado === "respondido";
+
+  const problemaOk = forte(problema);
+  const impactoOk = forte(impacto) || profundo(perdida);
+  const necessidadeOk = forte(necessidade);
+  const urgenciaOk = forte(urgencia) || forte(gatilho);
+  const objetivoOk = (objetivo?.estado ?? "nao_explorado") === "respondido";
+  const intencaoClara = m.sinais_compra?.estado === "respondido" || forte(gatilho);
+
+  const faltando: string[] = [];
+  if (!objetivoOk) faltando.push("objetivo");
+  if (!problemaOk) faltando.push("problema relevante");
+  if (!impactoOk) faltando.push("impacto concreto");
+  if (!necessidadeOk) faltando.push("necessidade / valor da mudança");
+  if (!urgenciaOk) faltando.push("urgência ou gatilho de agora");
+
+  // Minimização recente derruba a confiança: só sai dela com impacto ou gatilho forte.
+  if (minimizou && !(impactoOk && (necessidadeOk || urgenciaOk))) {
+    return {
+      suficiente: false,
+      condicao: null,
+      faltando: faltando.length ? faltando : ["impacto real após a minimização"],
+      motivo: "cliente minimizou a dor — a implicação ainda não foi validada",
+      minimizou,
+    };
+  }
+
+  if (problemaOk && impactoOk && necessidadeOk)
+    return { suficiente: true, condicao: "A", faltando: [], motivo: "problema + impacto + necessidade", minimizou };
+  if (problemaOk && urgenciaOk && intencaoClara)
+    return { suficiente: true, condicao: "B", faltando: [], motivo: "problema + gatilho forte + intenção clara", minimizou };
+  if (objetivoOk && problemaOk && impactoOk && (necessidadeOk || urgenciaOk))
+    return { suficiente: true, condicao: "C", faltando: [], motivo: "cliente entregou o quadro completo", minimizou };
+
+  return {
+    suficiente: false,
+    condicao: null,
+    faltando,
+    motivo: `ainda falta profundidade em: ${faltando.join(", ") || "descoberta"}`,
+    minimizou,
+  };
+}
+
 
 /** Slots ainda não respondidos, em ordem de prioridade comercial. */
 export function lacunas(mapa: Mapa): SlotKey[] {
