@@ -69,8 +69,16 @@ function getMediaStreamId(targetTabId) {
 let overlayTabId = null;
 
 async function injectOverlay(tabId) {
-  await chrome.scripting.executeScript({ target: { tabId }, files: ["overlay.js"] });
-  overlayTabId = tabId;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["overlay.js"] });
+    overlayTabId = tabId;
+  } catch (e) {
+    const err = chrome.runtime.lastError?.message || e?.message || String(e);
+    if (/permission|access|cannot access|host/i.test(err)) {
+      throw new Error("Abra uma reunião no Zoom Web para usar o modo compacto.");
+    }
+    throw e;
+  }
 }
 
 function toOverlay(msg) {
