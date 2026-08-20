@@ -223,12 +223,21 @@ function detect(text, etapa) {
   if (etapa === "spin") {
     const critico = matchRules(text, RULES, FALLBACKS);
     if (critico && (CRITICOS_SEMPRE.has(critico.tipo) || OBJECOES_REAIS.has(critico.tipo))) return critico;
+    // Cliente minimizou a dor: nunca encerrar o SPIN — aprofundar a implicação.
+    if (MINIMIZACAO_RE.test(text)) {
+      return {
+        tipo: "spin_implicacao",
+        ...SPIN_FALLBACKS.spin_implicacao,
+        orientacao: "Ele minimizou. Peça um exemplo concreto e recente.",
+      };
+    }
     const sinal = matchRules(text, SPIN_RULES, SPIN_FALLBACKS);
     if (sinal && spinSuficiente(memoria) && sinal.tipo !== "spin_suficiente") {
       return { tipo: "spin_suficiente", ...SPIN_FALLBACKS.spin_suficiente };
     }
     return sinal;
   }
+
   return matchRules(text, RULES, FALLBACKS);
 }
 
