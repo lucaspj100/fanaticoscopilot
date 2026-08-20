@@ -49,7 +49,13 @@
       font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
       color: var(--c, #ffb020); white-space: nowrap;
     }
+    .etapa {
+      font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(242,247,251,.6); border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px; padding: 2px 7px; white-space: nowrap;
+    }
     .spacer { flex: 1; }
+
     .ctrl {
       all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 6px;
       display: grid; place-items: center; color: rgba(242,247,251,.55); font-size: 13px; line-height: 1;
@@ -68,7 +74,9 @@
   <div class="wrap" part="wrap">
     <div class="bar" id="bar">
       <span class="rotulo" id="rotulo">UNITED COPILOT</span>
+      <span class="etapa" id="etapa">RAPPORT</span>
       <span class="spacer"></span>
+
       <button class="ctrl" id="reset" title="Voltar à posição padrão">⌖</button>
       <button class="ctrl" id="min" title="Minimizar">–</button>
       <button class="ctrl" id="close" title="Fechar">✕</button>
@@ -179,11 +187,30 @@
   };
   window.__unitedCopilotOverlay = api;
 
+  const ETAPA_LABEL = {
+    rapport: "RAPPORT",
+    di: "DECISÃO IMEDIATA",
+    spin: "SPIN",
+    apresentacao: "APRESENTAÇÃO",
+    gatilho: "GATILHO",
+    fechamento: "FECHAMENTO",
+  };
+  function setEtapa(etapa) {
+    const el = $("etapa");
+    if (el && ETAPA_LABEL[etapa]) el.textContent = ETAPA_LABEL[etapa];
+  }
+  chrome.storage?.local?.get(["etapaAtual"]).then(({ etapaAtual }) => setEtapa(etapaAtual || "rapport")).catch(() => {});
+
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === "COPILOT_CARD") api.onCard(msg.card);
+    if (msg?.type === "COPILOT_CARD") {
+      api.onCard(msg.card);
+      if (msg.card?.etapa) setEtapa(msg.card.etapa);
+    }
+    if (msg?.type === "COPILOT_ETAPA") setEtapa(msg.etapa);
     if (msg?.type === "COPILOT_OVERLAY_HIDE") api.hide();
     if (msg?.type === "COPILOT_OVERLAY_SHOW") api.show();
   });
+
 
   api.show();
 })();

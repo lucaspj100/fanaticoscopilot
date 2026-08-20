@@ -20,9 +20,23 @@
       <button class="mode" data-mode="ambos">Ambos</button>
     </div>
 
+    <div class="etapas" id="etapas" role="group" aria-label="Etapa da call">
+      <button class="etapa-btn" data-etapa="rapport" title="Rapport">RAP</button>
+      <button class="etapa-btn" data-etapa="di" title="Decisão Imediata">DI</button>
+      <button class="etapa-btn" data-etapa="spin" title="Pré-speech / SPIN">SPIN</button>
+      <button class="etapa-btn" data-etapa="apresentacao" title="Apresentação">APRES</button>
+      <button class="etapa-btn" data-etapa="gatilho" title="Gatilho de fechamento">GAT</button>
+      <button class="etapa-btn" data-etapa="fechamento" title="Fechamento">FECH</button>
+    </div>
+
     <p class="status" id="status">Abra a call em app.zoom.us, volte para esta aba e clique em Iniciar.</p>
 
     <main id="cards"></main>
+
+    <details id="memoria-box" class="memoria">
+      <summary>Contexto da call</summary>
+      <ul id="memoria"></ul>
+    </details>
 
     <button id="diag-toggle" class="ghost">Ver diagnóstico</button>
 
@@ -45,6 +59,7 @@
         <h2>Rede</h2>
         <ul id="net"><li>Nenhuma requisição ainda<b>—</b></li></ul>
       </section>
+
 
       <section class="transcript">
         <h2>Transcrição</h2>

@@ -30,13 +30,73 @@ let preAlertTipo = null; // situação já alertada pela parcial deste turno
 let preAlertAt = null;
 const turns = []; // histórico curto enviado à IA
 
+/* ---------- etapa manual + memória viva da call ---------- */
+
+const MEMORIA_VAZIA = {
+  etapaAtual: "rapport",
+  objetivo: null,
+  problema: null,
+  implicacao: null,
+  necessidade: null,
+  criterioCompra: [],
+  pontosQueGostou: [],
+  objecoes: [],
+  sinaisCompra: [],
+  informacoesImportantes: [],
+  ultimaInteracao: null,
+};
+
+let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
+let memoria = { ...MEMORIA_VAZIA };
+let memoriaAt = null;
+let memoriaInFlight = false;
+
+function resetSessao() {
+  turns.length = 0;
+  memoria = { ...MEMORIA_VAZIA, etapaAtual: etapaManual };
+  memoriaAt = null;
+  memoriaInFlight = false;
+  preAlertTipo = null;
+  preAlertAt = null;
+  emitMemoria([]);
+}
+
+function emitMemoria(alterados) {
+  chrome.runtime
+    .sendMessage({ type: "COPILOT_MEMORY", memoria, alterados, at: memoriaAt, etapa: etapaManual })
+    .catch(() => {});
+}
+
+/** Atualiza a memória em paralelo — nunca bloqueia o card principal. */
+async function atualizarMemoria(text) {
+  if (memoriaInFlight) return;
+  memoriaInFlight = true;
+  try {
+    const data = await apiFetch("/api/public/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memoria, text, etapa: etapaManual }),
+    });
+    if (data?.memoria) {
+      memoria = { ...data.memoria, etapaAtual: etapaManual };
+      memoriaAt = Date.now();
+      emitMemoria(data.alterados || []);
+    }
+  } catch {
+    /* memória é best-effort */
+  } finally {
+    memoriaInFlight = false;
+  }
+}
+
 function log(status, extra) {
   chrome.runtime.sendMessage({ type: "COPILOT_STATUS", status, ...extra }).catch(() => {});
 }
 
 function push(card) {
-  chrome.runtime.sendMessage({ type: "COPILOT_CARD", card }).catch(() => {});
+  chrome.runtime.sendMessage({ type: "COPILOT_CARD", card: { ...card, etapa: etapaManual } }).catch(() => {});
 }
+
 
 /* ---------- camada 1: detecção instantânea por padrões ---------- */
 
@@ -196,9 +256,12 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   turns.push({ speaker: "cliente", text });
   while (turns.length > 4) turns.shift();
 
+  // Memória viva: roda EM PARALELO, não atrasa o card.
+  atualizarMemoria(text);
+
   // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
   if (!quick && text.split(/\s+/).length < 4) {
-    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text } }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual } }).catch(() => {});
     log("ouvindo");
     return;
   }
@@ -208,8 +271,15 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     const card = await apiFetch("/api/public/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ turns, tipo: quick?.tipo, etapa: quick?.etapa }),
+      body: JSON.stringify({
+        turns,
+        tipo: quick?.tipo,
+        etapa: etapaManual,
+        etapaManual,
+        memoria,
+      }),
     });
+
     timing.ia = Math.round(performance.now() - iaStart);
     chrome.runtime
       .sendMessage({
@@ -217,13 +287,16 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
         decision: {
           decisao: card.decisao || (card.tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL"),
           tipo: card.tipo,
-          etapa: card.etapa,
+          etapa: etapaManual,
           orientacao: card.orientacao,
           frase: card.frase,
           confianca: card.confianca,
           aviso: card.aviso,
+          etapaManual,
+          memoriaAt,
           debug: card.debug,
         },
+
       })
       .catch(() => {});
     if (card.tipo && card.tipo !== "nenhum") {
@@ -349,7 +422,15 @@ function stop() {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "OFFSCREEN_START") {
+    // Nova sessão de call: zera memória, histórico e cards.
+    etapaManual = msg.etapa || "rapport";
+    resetSessao();
     start(msg.streamId, msg.endpoint).catch((e) => log("erro", { error: e.message }));
   }
   if (msg?.type === "OFFSCREEN_STOP") stop();
+  if (msg?.type === "COPILOT_ETAPA" && msg.etapa) {
+    etapaManual = msg.etapa;
+    memoria.etapaAtual = etapaManual;
+  }
+
 });

@@ -17,7 +17,79 @@ const els = {
   diagToggle: document.getElementById("diag-toggle"),
   diagPanel: document.getElementById("diag-panel"),
   decision: document.getElementById("decision"),
+  memoria: document.getElementById("memoria"),
 };
+
+/* ---------- etapa manual da call (fonte da verdade) ---------- */
+
+const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"];
+let etapaAtual = "rapport";
+
+function paintEtapas() {
+  document
+    .querySelectorAll(".etapa-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.etapa === etapaAtual));
+}
+
+function setEtapa(etapa, { broadcast = true } = {}) {
+  if (!ETAPAS.includes(etapa)) return;
+  etapaAtual = etapa;
+  paintEtapas();
+  chrome.storage.local.set({ etapaAtual: etapa });
+  if (broadcast) chrome.runtime.sendMessage({ type: "COPILOT_ETAPA", etapa }).catch(() => {});
+}
+
+chrome.storage.local.get(["etapaAtual"]).then(({ etapaAtual: e }) => setEtapa(e || "rapport", { broadcast: false }));
+document
+  .querySelectorAll(".etapa-btn")
+  .forEach((b) => b.addEventListener("click", () => setEtapa(b.dataset.etapa)));
+
+/* ---------- memória viva da call ---------- */
+
+const MEM_LABELS = [
+  ["objetivo", "Objetivo"],
+  ["problema", "Problema"],
+  ["implicacao", "Implicação"],
+  ["necessidade", "Necessidade"],
+  ["criterioCompra", "Critério"],
+  ["pontosQueGostou", "Gostou"],
+  ["objecoes", "Objeções"],
+  ["sinaisCompra", "Sinais de compra"],
+  ["informacoesImportantes", "Outros"],
+];
+
+let memoriaAtual = null;
+let memoriaAt = null;
+
+function renderMemoria(memoria, alterados = []) {
+  memoriaAtual = memoria;
+  const linhas = MEM_LABELS.map(([k, label]) => {
+    const v = memoria?.[k];
+    const txt = Array.isArray(v) ? v.join(" · ") : v;
+    return txt ? [k, label, txt] : null;
+  }).filter(Boolean);
+
+  if (!linhas.length) {
+    const p = document.createElement("li");
+    p.className = "vazio";
+    p.textContent = "Nada registrado ainda nesta call.";
+    els.memoria.replaceChildren(p);
+    return;
+  }
+  els.memoria.replaceChildren(
+    ...linhas.map(([k, label, txt]) => {
+      const li = document.createElement("li");
+      const s = document.createElement("span");
+      s.textContent = label;
+      const b = document.createElement("b");
+      b.textContent = txt;
+      li.append(s, b);
+      if (alterados.includes(k)) li.classList.add("novo");
+      return li;
+    }),
+  );
+}
+
 
 /* ---------- modos: CALL (padrão) x DIAGNÓSTICO ---------- */
 
@@ -82,6 +154,12 @@ function renderDecision(d) {
   if (d.confianca != null) linhas.push(["Confiança", String(d.confianca)]);
   if (d.tipo) linhas.push(["type", d.tipo]);
   if (d.etapa) linhas.push(["stage", d.etapa]);
+  linhas.push(["etapa_manual", d.etapaManual || etapaAtual]);
+  linhas.push([
+    "memoria",
+    memoriaAt ? `${MEM_LABELS.filter(([k]) => { const v = memoriaAtual?.[k]; return Array.isArray(v) ? v.length : v; }).length} campos` : "vazia",
+  ]);
+
   if (d.orientacao) linhas.push(["orientation", d.orientacao]);
   if (d.frase) linhas.push(["suggested_phrase", d.frase]);
   if (d.motivo) linhas.push(["Motivo", d.motivo]);
@@ -252,6 +330,12 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);
   if (msg?.type === "COPILOT_DECISION") renderDecision(msg.decision);
+  if (msg?.type === "COPILOT_MEMORY") {
+    memoriaAt = msg.at || null;
+    renderMemoria(msg.memoria, msg.alterados || []);
+  }
+  if (msg?.type === "COPILOT_ETAPA" && msg.from === "overlay") setEtapa(msg.etapa, { broadcast: false });
+
   if (msg?.type === "COPILOT_STATUS") {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }
@@ -284,10 +368,16 @@ els.toggle.addEventListener("click", async () => {
     return;
   }
   els.status.textContent = "Conectando à aba…";
+  // Nova sessão de call: zera cards e memória local.
+  els.cards.replaceChildren();
+  memoriaAt = null;
+  renderMemoria(null, []);
   const res = await chrome.runtime.sendMessage({
     type: "COPILOT_START",
     endpoint: els.endpoint.value.trim() || DEFAULT_ENDPOINT,
+    etapa: etapaAtual,
   });
+
   if (res?.ok) {
     setRunning(true);
     els.status.textContent = `COPILOTO ATIVO — OUVINDO · ${res.tabTitle}`;
@@ -295,3 +385,4 @@ els.toggle.addEventListener("click", async () => {
     els.status.textContent = `⚠ ${res?.error || chrome.runtime.lastError?.message || "Falha ao iniciar."}`;
   }
 });
+renderMemoria(null, []);

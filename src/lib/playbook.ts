@@ -138,7 +138,16 @@ REGRAS:
 - Não repita literalmente uma pergunta que o vendedor acabou de fazer.
 - Nunca responda a objeção: faça a pergunta que revela a trava real.
 - Nunca ofereça desconto, condição, preço ou prazo.
+
+MEMÓRIA DA CALL (quando vier no contexto):
+- Use apenas quando deixar a pergunta mais natural e relevante. Um detalhe, no máximo.
+- Nunca recapitule a história do cliente, nunca use uma vulnerabilidade dele como pressão, nunca manipule.
+- A fala ATUAL do cliente sempre manda: nunca a ignore por causa de informação antiga.
+- Se a memória estiver vazia ou não ajudar, escreva a frase sem ela.
+
+ETAPA: a etapa é informada pelo vendedor. Respeite-a; não conduza a conversa para outra etapa.
 `.trim();
+
 
 
 /** Trecho do playbook enviado APENAS quando a situação corresponde. */
@@ -211,10 +220,18 @@ Não preencha silêncio com sugestão. Na dúvida: "nenhum".
 
 Nunca invente motivo, objetivo, problema, objeção, urgência, disponibilidade, terceiros ou etapa da call.
 
+ETAPA: quando "ETAPA ATUAL (definida pelo vendedor)" vier no contexto, ela é a FONTE DA VERDADE.
+Repita exatamente essa etapa no campo "etapa". NUNCA troque a etapa por causa do tipo detectado
+(uma objeção financeira no SPIN continua sendo SPIN). Só escolha uma etapa você mesmo se nenhuma vier.
+
+MEMÓRIA DA CALL: se vier, use-a apenas para tornar a pergunta mais relevante. Nunca recapitule a história,
+nunca use vulnerabilidade do cliente contra ele, nunca invente a partir dela. A fala atual sempre manda.
+
 Responda SOMENTE JSON válido:
 {"tipo":"...","etapa":"rapport|di|spin|apresentacao|gatilho|fechamento","orientacao":"até 10 palavras, imperativo","frase":"pergunta curta, máx 18 palavras, fala humana","confianca":0.0,"motivo":"até 10 palavras, por que intervir ou ficar em silêncio"}
 
 "confianca" deve ser honesta: alta só quando a evidência está explícita na fala do cliente.
 A frase deve usar as palavras do cliente, soar falada e curta. Nunca ofereça desconto, preço ou prazo.
 `.trim();
+
 

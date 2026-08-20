@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
+import { camposPreenchidos, memoriaParaPrompt, normalizarMemoria } from "@/lib/memoria";
 import { CLASSIFY_SYSTEM, COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
 
 const CORS = {
@@ -19,10 +20,15 @@ const Body = z.object({
   // Situação já classificada pela camada 1 (opcional).
   tipo: z.string().optional(),
   etapa: z.string().optional(),
+  /** Etapa informada MANUALMENTE pelo vendedor — fonte da verdade. */
+  etapaManual: z.string().optional(),
+  /** Memória viva da call (estado resumido, nunca a transcrição inteira). */
+  memoria: z.unknown().optional(),
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
 const MODEL = "google/gemini-3.1-flash-lite";
+
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 /** Sinais que dependem da atuação do vendedor: bloqueados até haver speaker detection. */
@@ -107,9 +113,32 @@ export const Route = createFileRoute("/api/public/coach")({
           .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
           .join("\n");
 
+        // Etapa manual do vendedor = fonte da verdade. A IA nunca a substitui.
+        const etapaManual =
+          parsed.etapaManual && (ETAPAS as readonly string[]).includes(parsed.etapaManual)
+            ? parsed.etapaManual
+            : undefined;
+
+        const memoria = normalizarMemoria(parsed.memoria);
+        const memoriaTexto = memoriaParaPrompt(memoria);
+        const camposMemoria = camposPreenchidos(memoria);
+        const blocoContexto = memoriaTexto
+          ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
+          : "";
+        const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
+
         const ms = () => Date.now() - started;
         const nada = (decisao: string, debug?: Record<string, unknown>) =>
-          Response.json({ tipo: "nenhum", fonte: "ia", decisao, ms: ms(), debug }, { headers: CORS });
+          Response.json(
+            {
+              tipo: "nenhum",
+              fonte: "ia",
+              decisao,
+              ms: ms(),
+              debug: { ...debug, etapa_manual: etapaManual ?? null, campos_memoria: camposMemoria },
+            },
+            { headers: CORS },
+          );
 
         // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
         // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
@@ -125,6 +154,9 @@ export const Route = createFileRoute("/api/public/coach")({
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
         const debug: Record<string, unknown> = {
           regraLocal: quick?.tipo ?? null,
+          etapa_manual: etapaManual ?? null,
+          memoria_utilizada: !!memoriaTexto,
+          campos_memoria: camposMemoria,
           sinal_baseado_em: tipo === "nenhum" ? undefined : "regra_local",
           motivo_intervencao: tipo === "nenhum" ? undefined : `regra local: ${tipo}`,
         };
@@ -136,7 +168,11 @@ export const Route = createFileRoute("/api/public/coach")({
             const res = await callAI(
               [
                 { role: "system", content: CLASSIFY_SYSTEM },
-                { role: "user", content: `CONVERSA:\n${transcript}\n\nResponda só o JSON.` },
+                {
+                  role: "user",
+                  content: `${blocoEtapa}${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                },
+
               ],
               key,
             );
@@ -203,8 +239,11 @@ export const Route = createFileRoute("/api/public/coach")({
 
         const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
         const etapaBruta = parsed.etapa ?? etapaIA;
+        // A etapa manual do vendedor prevalece sobre qualquer inferência.
         const etapa =
-          etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa;
+          etapaManual ??
+          (etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa);
+
 
         const card = {
           tipo,
@@ -239,9 +278,10 @@ export const Route = createFileRoute("/api/public/coach")({
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
               },
             ],
+
             key,
           );
 
