@@ -344,7 +344,7 @@ export function valorDaIntervencao(
   };
   const pontos = Object.values(criterios).filter(Boolean).length;
   const minimo = ctx.dificuldade === "alta" ? 5 : 4;
-  return { pontos, aprovada: !!f && criterios.evitaRepeticao && pontos >= minimo, criterios };
+  return { pontos, aprovada: !!f && !!criterios["evitaRepeticao"] && pontos >= minimo, criterios };
 }
 
 /* ------------------------------------------------------------------
