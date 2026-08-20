@@ -10,7 +10,7 @@ import {
   mapaDaMemoria,
   memoriaParaPrompt,
   normalizarMemoria,
-  spinSuficiente,
+  avaliacaoSpin,
 } from "@/lib/memoria";
 import {
   CLASSIFY_SYSTEM,
