@@ -72,6 +72,8 @@ async function injectOverlay(tabId) {
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ["overlay.js"] });
     overlayTabId = tabId;
+    // overlay nasce já com a recomendação ativa (nunca com cache antigo)
+    chrome.tabs.sendMessage(tabId, { type: "COPILOT_ACTIVE_REC", state }).catch(() => {});
   } catch (e) {
     const err = chrome.runtime.lastError?.message || e?.message || String(e);
     if (/permission|access|cannot access|host/i.test(err)) {

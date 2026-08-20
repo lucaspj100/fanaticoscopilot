@@ -262,8 +262,8 @@ const ETAPA_LABEL = {
   fechamento: "Fechamento",
 };
 
-/* O card pertence a um TURNO de fala, nunca a uma janela de tempo.
-   A prioridade (GRUPO) só arbitra resultados concorrentes do MESMO turno. */
+/* A recomendação ativa vive no background (fonte única da verdade).
+   Aqui só renderizamos o estado recebido; nada é decidido localmente. */
 
 let atual = null; // { card, el, turnId }
 let currentTurnId = 0;
