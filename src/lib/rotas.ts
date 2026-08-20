@@ -448,14 +448,26 @@ export function decidirProximaAcao(params: {
   minimizou?: boolean;
   perguntasSeguidas?: number;
   objecaoAtiva?: boolean;
+  /** V3.0 — camada de contribuição. */
+  perfil?: PerfilCliente;
+  sinais?: Partial<SinaisFala>;
+  dorAtual?: DorAtual;
+  clienteEngajado?: boolean;
 }): Decisao {
   const mapa = params.mapa ?? novoMapa();
   const ativas = rotasAtivas(params.motivacoes);
   let rota = rotaDominante(params.motivacoes, params.naFala ?? []);
   const prof = profundidadeAtual(mapa);
   const faltando = pilaresFaltando(mapa);
+  const dif = dificuldadeCliente(params.perfil);
 
-  const base = (nextAction: NextAction, alvo: string, motivo: string, exemplo: string | null = null): Decisao => ({
+  const base = (
+    nextAction: NextAction,
+    alvo: string,
+    motivo: string,
+    exemplo: string | null = null,
+    contribuicao: boolean = false,
+  ): Decisao => ({
     rota,
     rotasAtivas: ativas,
     nextAction,
@@ -463,9 +475,28 @@ export function decidirProximaAcao(params: {
     exemplo,
     motivo,
     profundidadeAtual: prof,
+    contribuicao,
+    dificuldadeCliente: dif,
+    dorAtual: params.dorAtual ?? "desconhecida",
   });
 
   if (params.objecaoAtiva) return base("tratar_objecao", "a trava real por trás da objeção", "objeção ativa na fala do cliente");
+
+  // V3.0 — antes de extrair mais informação, veja se dá para devolver valor.
+  if (!params.spinSuficiente) {
+    const contrib = escolherContribuicao({
+      mapa,
+      perfil: params.perfil,
+      sinais: params.sinais,
+      dorAtual: params.dorAtual,
+      perguntasSeguidas: params.perguntasSeguidas,
+      rota,
+      clienteEngajado: params.clienteEngajado,
+    });
+    if (contrib) return base(contrib.nextAction, contrib.alvo, contrib.motivo, contrib.exemplo || null, true);
+  }
+
+
 
   // Minimizou a dor: a rota emocional morreu — vá para ambição, janela ou timing.
   if (params.minimizou) {
