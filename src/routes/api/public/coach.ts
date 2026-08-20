@@ -26,7 +26,14 @@ import {
   SPIN_CLASSIFY_SYSTEM,
   SPIN_COACH_EXTRA,
   ROTAS_EXTRA,
+  CONTRIBUICAO_EXTRA,
 } from "@/lib/playbook";
+import {
+  contribuicaoParaPrompt,
+  dificuldadeCliente,
+  ehPergunta,
+  valorDaIntervencao,
+} from "@/lib/contribuicao";
 
 
 const CORS = {
@@ -246,7 +253,40 @@ export const Route = createFileRoute("/api/public/coach")({
           naFala,
           perguntasSeguidas,
           objecaoAtiva,
+          ultimaFala: last?.text ?? "",
         });
+        // V3.0 — camada de contribuição: perfil do cliente, dor atual e ritmo.
+        const blocoContribuicao = `\n\nCONDUÇÃO (V3.0 — antes de perguntar, veja se dá para contribuir):\n${contribuicaoParaPrompt(
+          {
+            perfil: memoria.perfilCliente,
+            dorAtual: memoria.dorAtual,
+            perguntasSeguidas,
+            contribuicao: decisaoComercial.contribuicao
+              ? {
+                  nextAction: decisaoComercial.nextAction as never,
+                  alvo: decisaoComercial.informacaoQueQuerDescobrir,
+                  exemplo: decisaoComercial.exemplo ?? "",
+                  motivo: decisaoComercial.motivo,
+                }
+              : null,
+          },
+        )}`;
+        /** Contribuição pedida pelo motor: uma pergunta seca não serve. */
+        const melhorFrase = (frase: string): { frase: string; trocada: boolean } => {
+          const alt = decisaoComercial.exemplo ?? "";
+          const valor = valorDaIntervencao(frase, {
+            ultimaFalaCliente: last?.text ?? "",
+            sugestoesAnteriores: sugestoes,
+            perguntasSeguidas,
+            dificuldade: dificuldadeCliente(memoria.perfilCliente),
+          });
+          const precisaTrocar =
+            (decisaoComercial.contribuicao && ehPergunta(frase)) || !valor.aprovada;
+          if (precisaTrocar && alt && !fraseRepetida(memoria.mapa, alt)) {
+            return { frase: alt, trocada: true };
+          }
+          return { frase, trocada: false };
+        };
         const blocoRota = `\n\nLEITURA COMERCIAL DO CLIENTE (motor de decisão):\n${rotaParaPrompt(
           decisaoComercial,
         )}`;
@@ -261,6 +301,10 @@ export const Route = createFileRoute("/api/public/coach")({
             .filter(([, v]) => v && v.estado !== "nao_explorado" && v.valor)
             .slice(0, 6)
             .map(([k, v]) => `${k}: ${v.valor}`),
+          contribuicao: decisaoComercial.contribuicao ?? false,
+          dificuldadeCliente: dificuldadeCliente(memoria.perfilCliente),
+          dorAtual: memoria.dorAtual,
+          perfilCliente: memoria.perfilCliente,
           criteriosCompra: memoria.criteriosCompra,
           ganchosApresentacao: memoria.ganchos,
           spinSuficiente: avSpin.suficiente,
@@ -279,6 +323,14 @@ export const Route = createFileRoute("/api/public/coach")({
             },
             { headers: CORS },
           );
+
+        // V3.0 — silêncio é uma intervenção válida: não force card.
+        if (decisaoComercial.nextAction === "ficar_em_silencio" && !objecaoAtiva) {
+          return nada("SILENCIO_ESTRATEGICO", {
+            ...debugRota,
+            motivo_silencio: decisaoComercial.motivo,
+          });
+        }
 
         // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
         // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
@@ -344,11 +396,11 @@ export const Route = createFileRoute("/api/public/coach")({
                   role: "system",
                   content: `${
                     isDI ? DI_CLASSIFY_SYSTEM : isSpin ? SPIN_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM
-                  }\n\n${DECISION_EXTRA}\n\n${ROTAS_EXTRA}\n\nInclua também no JSON: "acao" (uma das ações possíveis), "porque" (1 frase curta) e "rota" (rota de descoberta usada).`,
+                  }\n\n${DECISION_EXTRA}\n\n${ROTAS_EXTRA}\n\n${CONTRIBUICAO_EXTRA}\n\nInclua também no JSON: "acao" (uma das ações possíveis), "porque" (1 frase curta) e "rota" (rota de descoberta usada).`,
                 },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}${blocoContribuicao}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -433,6 +485,13 @@ export const Route = createFileRoute("/api/public/coach")({
               fraseIA = decisaoComercial.exemplo;
               repetiu = null;
             }
+            const melhor = melhorFrase(fraseIA);
+            if (melhor.trocada) {
+              debug["fraseDescartadaPorValor"] = fraseIA;
+              fraseIA = melhor.frase;
+              debug["fraseDaContribuicao"] = fraseIA;
+            }
+
             if (repetiu)
               return nada("PERGUNTA_JA_RESPONDIDA", {
                 ...debug,
@@ -499,6 +558,8 @@ export const Route = createFileRoute("/api/public/coach")({
           lacunas: faltando.slice(0, 4),
           rota: decisaoComercial.rota,
           nextAction: decisaoComercial.nextAction,
+          contribuicao: decisaoComercial.contribuicao ?? false,
+          dorAtual: memoria.dorAtual,
           descobrir: decisaoComercial.informacaoQueQuerDescobrir,
           rotaRotulo: decisaoComercial.rota ? ROTAS[decisaoComercial.rota].rotulo : null,
           fonte: "ia" as const,
@@ -529,13 +590,13 @@ export const Route = createFileRoute("/api/public/coach")({
                     : isSpin
                       ? `${COACH_SYSTEM}\n\n${SPIN_COACH_EXTRA}`
                       : COACH_SYSTEM
-                }\n\n${ROTAS_EXTRA}\n\n${NATURALIDADE_EXTRA}`,
+                }\n\n${ROTAS_EXTRA}\n\n${CONTRIBUICAO_EXTRA}\n\n${NATURALIDADE_EXTRA}`,
               },
               {
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
+                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}${blocoContribuicao}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
               },
             ],
             key,
@@ -570,6 +631,12 @@ export const Route = createFileRoute("/api/public/coach")({
           debug["fraseRaw"] = raw;
           // Saída truncada/vazia cai na frase do playbook.
           let frase = raw.length >= 12 ? raw : base.frase;
+          const melhorFinal = melhorFrase(frase);
+          if (melhorFinal.trocada) {
+            debug["fraseDescartadaPorValor"] = frase;
+            frase = melhorFinal.frase;
+            debug["fraseDaContribuicao"] = frase;
+          }
           const repetiuFinal = fraseRepetida(memoria.mapa, frase);
           if (repetiuFinal) {
             // Já respondido nesta call: em vez de repetir, avançamos pela rota dominante.
