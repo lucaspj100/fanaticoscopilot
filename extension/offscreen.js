@@ -30,13 +30,73 @@ let preAlertTipo = null; // situação já alertada pela parcial deste turno
 let preAlertAt = null;
 const turns = []; // histórico curto enviado à IA
 
+/* ---------- etapa manual + memória viva da call ---------- */
+
+const MEMORIA_VAZIA = {
+  etapaAtual: "rapport",
+  objetivo: null,
+  problema: null,
+  implicacao: null,
+  necessidade: null,
+  criterioCompra: [],
+  pontosQueGostou: [],
+  objecoes: [],
+  sinaisCompra: [],
+  informacoesImportantes: [],
+  ultimaInteracao: null,
+};
+
+let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
+let memoria = { ...MEMORIA_VAZIA };
+let memoriaAt = null;
+let memoriaInFlight = false;
+
+function resetSessao() {
+  turns.length = 0;
+  memoria = { ...MEMORIA_VAZIA, etapaAtual: etapaManual };
+  memoriaAt = null;
+  memoriaInFlight = false;
+  preAlertTipo = null;
+  preAlertAt = null;
+  emitMemoria([]);
+}
+
+function emitMemoria(alterados) {
+  chrome.runtime
+    .sendMessage({ type: "COPILOT_MEMORY", memoria, alterados, at: memoriaAt, etapa: etapaManual })
+    .catch(() => {});
+}
+
+/** Atualiza a memória em paralelo — nunca bloqueia o card principal. */
+async function atualizarMemoria(text) {
+  if (memoriaInFlight) return;
+  memoriaInFlight = true;
+  try {
+    const data = await apiFetch("/api/public/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memoria, text, etapa: etapaManual }),
+    });
+    if (data?.memoria) {
+      memoria = { ...data.memoria, etapaAtual: etapaManual };
+      memoriaAt = Date.now();
+      emitMemoria(data.alterados || []);
+    }
+  } catch {
+    /* memória é best-effort */
+  } finally {
+    memoriaInFlight = false;
+  }
+}
+
 function log(status, extra) {
   chrome.runtime.sendMessage({ type: "COPILOT_STATUS", status, ...extra }).catch(() => {});
 }
 
 function push(card) {
-  chrome.runtime.sendMessage({ type: "COPILOT_CARD", card }).catch(() => {});
+  chrome.runtime.sendMessage({ type: "COPILOT_CARD", card: { ...card, etapa: etapaManual } }).catch(() => {});
 }
+
 
 /* ---------- camada 1: detecção instantânea por padrões ---------- */
 
