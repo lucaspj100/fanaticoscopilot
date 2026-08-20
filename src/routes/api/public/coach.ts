@@ -11,6 +11,7 @@ import {
   memoriaParaPrompt,
   normalizarMemoria,
   avaliacaoSpin,
+  aplicarMapaLocal,
   decisaoDaMemoria,
 } from "@/lib/memoria";
 import { ROTAS, pontuarFala, rotaParaPrompt, type Motivacao } from "@/lib/rotas";
@@ -200,6 +201,16 @@ export const Route = createFileRoute("/api/public/coach")({
 
         // ---- V2.8: motivação dominante, rota de descoberta e próxima ação.
         const naFala = Object.keys(pontuarFala(last?.text ?? "")) as Motivacao[];
+        // A memória pode ainda não ter processado esta fala: acumulamos localmente
+        // as motivações e o mapa dos turnos do cliente antes de decidir a rota.
+        for (const t of parsed.turns.filter((t) => t.speaker === "cliente")) {
+          const local = aplicarMapaLocal(memoria, t.text);
+          memoria.mapa = local.memoria.mapa;
+          memoria.motivacoes = local.memoria.motivacoes;
+          memoria.rota = local.memoria.rota;
+          memoria.criteriosCompra = local.memoria.criteriosCompra;
+          memoria.ganchos = local.memoria.ganchos;
+        }
         const objecaoAtiva = !!quick && OBJECOES_REAIS.has(quick.tipo);
 
         // ---- Mapa vivo do cliente: o que já sabemos e o que ainda falta.
