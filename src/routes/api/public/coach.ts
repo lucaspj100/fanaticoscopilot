@@ -246,10 +246,13 @@ export const Route = createFileRoute("/api/public/coach")({
           try {
             const res = await callAI(
               [
-                { role: "system", content: isDI ? DI_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM },
+                {
+                  role: "system",
+                  content: isDI ? DI_CLASSIFY_SYSTEM : isSpin ? SPIN_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM,
+                },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -294,6 +297,13 @@ export const Route = createFileRoute("/api/public/coach")({
                 tipoSugerido: t,
                 motivo_silencio: "assunto não estabelece a Regra do Jogo",
               });
+            if (isSpin && !SPIN_TIPOS.has(t) && !OBJECOES_REAIS.has(t) && !CRITICOS_SEMPRE.has(t))
+              return nada("FORA_DA_ETAPA_SPIN", {
+                ...debug,
+                confianca,
+                tipoSugerido: t,
+                motivo_silencio: "assunto não aprofunda o SPIN",
+              });
             if (!(t in FALLBACKS))
               return nada("PARSE_ERROR", { ...debug, tipoInvalido: t, motivo_silencio: "tipo inválido" });
 
@@ -315,6 +325,7 @@ export const Route = createFileRoute("/api/public/coach")({
             debug["motivo_intervencao"] = motivoIA ?? `sinal do cliente: ${tipo}`;
             debug["confianca"] = confianca;
             if (typeof obj["diStatus"] === "string") diStatusIA = obj["diStatus"] as string;
+            if (typeof obj["eixo"] === "string") eixoIA = (obj["eixo"] as string).slice(0, 40);
 
           } catch (e) {
             return nada("PARSE_ERROR", {
@@ -341,6 +352,13 @@ export const Route = createFileRoute("/api/public/coach")({
           di_pede_apresentacao: "apresentada",
           di_estabelecida: "estabelecida",
         };
+        const spinStatus = isSpin ? derivarSpinStatus(memoria) : null;
+        if (isSpin) {
+          debug["spin_status"] = spinStatus;
+          debug["spin_suficiente"] = spinPronto;
+          debug["spin_eixos_explorados"] = memoria.spinPerguntasJaExploradas;
+        }
+
         const diStatus = isDI ? (diStatusIA ?? DI_STATUS_POR_TIPO[tipo] ?? null) : null;
         if (isDI) debug["di_status"] = diStatus;
 
@@ -353,6 +371,8 @@ export const Route = createFileRoute("/api/public/coach")({
           confianca,
           decisao,
           diStatus,
+          spinStatus,
+          eixo: eixoIA ?? null,
           fonte: "ia" as const,
         };
 
