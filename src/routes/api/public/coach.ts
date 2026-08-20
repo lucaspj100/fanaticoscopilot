@@ -3,7 +3,13 @@ import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
 import { camposPreenchidos, memoriaParaPrompt, normalizarMemoria } from "@/lib/memoria";
-import { CLASSIFY_SYSTEM, COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
+import {
+  CLASSIFY_SYSTEM,
+  COACH_SYSTEM,
+  DI_CLASSIFY_SYSTEM,
+  DI_COACH_EXTRA,
+  RULE_SNIPPETS,
+} from "@/lib/playbook";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +30,8 @@ const Body = z.object({
   etapaManual: z.string().optional(),
   /** Memória viva da call (estado resumido, nunca a transcrição inteira). */
   memoria: z.unknown().optional(),
+  /** Últimas frases já sugeridas ao vendedor — prevenção de loop. */
+  sugestoesAnteriores: z.array(z.string().max(240)).max(5).optional(),
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
@@ -45,7 +53,19 @@ const PROCESSO = new Set<string>([
   "pedido_decisao",
 ]);
 
-/** Threshold alto para objeções/compra; moderado para aprofundamento de SPIN. */
+/** Tipos próprios da etapa D.I. */
+const DI_TIPOS = new Set<string>([
+  "di_resistencia",
+  "di_criterios",
+  "di_comparacao",
+  "di_pede_apresentacao",
+  "di_estabelecida",
+]);
+
+/** Sinais críticos que interrompem qualquer etapa. */
+const CRITICOS_SEMPRE = new Set<string>(["fechou", "intencao_compra"]);
+
+/** Threshold alto para objeções/compra; moderado para aprofundamento de SPIN e D.I. */
 const CRITICOS = new Set<string>([
   "fechou",
   "intencao_compra",
@@ -55,7 +75,8 @@ const CRITICOS = new Set<string>([
   "tempo",
   "metodologia",
 ]);
-const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : 0.65);
+const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : DI_TIPOS.has(tipo) ? 0.6 : 0.65);
+
 
 
 /** Frase em uma linha, sem aspas, sem rótulo, curta. */
