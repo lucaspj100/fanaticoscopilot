@@ -174,7 +174,7 @@ function downsample(input, fromRate) {
 
 /* ---------- camada 1 antecipada: parcial enquanto o cliente fala ---------- */
 
-async function sendPartial(chunks) {
+async function sendPartial(chunks, turnId) {
   partialInFlight = true;
   try {
     const blob = encodeWav(chunks, TARGET_RATE);
@@ -183,15 +183,18 @@ async function sendPartial(chunks) {
     form.append("file", blob, "recording.wav");
     const data = await apiFetch("/api/public/transcribe", { method: "POST", body: form });
     const text = (data.text || "").trim();
-    if (!text || !speaking) return;
+    // A parcial só vale para o turno que a originou.
+    if (!text || !speaking || turnId !== currentTurnId) return;
 
     const quick = detect(text);
     if (quick && quick.tipo !== preAlertTipo) {
       preAlertTipo = quick.tipo;
       preAlertAt = performance.now();
       // Camada 1: tipo + orientação apenas. A frase vem depois, da IA.
-      push({ ...quick, fonte: "regra", parcial: true, ms: 0 });
-      chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: 0, parcial: true }).catch(() => {});
+      push({ ...quick, fonte: "regra", parcial: true, ms: 0 }, turnId);
+      chrome.runtime
+        .sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: 0, parcial: true, turnId })
+        .catch(() => {});
     }
   } catch {
     /* parcial é best-effort: nunca quebra o turno */
