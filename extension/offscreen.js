@@ -205,7 +205,7 @@ async function sendPartial(chunks, turnId) {
 
 /* ---------- pipeline do turno completo ---------- */
 
-async function processTurn(chunks, speechEndAt, vadDetectedAt) {
+async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
   // t = tempo medido a partir do FIM REAL da fala do cliente
   const t = (ts) => Math.round((ts ?? performance.now()) - speechEndAt);
 
@@ -250,7 +250,8 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
 
   if (!text || text.length < 4) { log("ouvindo"); emit(); return; }
 
-  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t() }).catch(() => {});
+  // Transcrição COMPLETA: encerra o turno anterior imediatamente na UI.
+  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t(), turnId, final: true }).catch(() => {});
 
   // Camada 1 — card imediato (regra local), se ainda não apareceu na parcial
   const classStart = performance.now();
@@ -258,7 +259,10 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   timing.classificacao = Math.round(performance.now() - classStart);
   if (quick && quick.tipo !== alertadoAntes) {
     if (timing.primeiroAlerta == null) timing.primeiroAlerta = t();
-    push({ ...quick, fonte: "regra", ms: t() });
+    push({ ...quick, fonte: "regra", ms: t() }, turnId);
+  } else if (quick && alertadoAntes === quick.tipo) {
+    // o card da parcial deste mesmo turno continua válido — reemite com o turnId final
+    push({ ...quick, fonte: "regra", ms: t() }, turnId);
   }
   emit();
 
