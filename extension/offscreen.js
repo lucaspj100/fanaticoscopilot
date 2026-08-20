@@ -359,7 +359,7 @@ function flush(speechEndAt) {
   if (!buffer.length) return;
   const chunks = buffer;
   buffer = [];
-  processTurn(chunks, speechEndAt ?? performance.now(), performance.now());
+  processTurn(chunks, speechEndAt ?? performance.now(), performance.now(), currentTurnId);
 }
 
 
