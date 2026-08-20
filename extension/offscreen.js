@@ -273,6 +273,164 @@ function downsample(input, fromRate) {
   return out;
 }
 
+/* ============================================================
+   V2.9 — TELEMETRIA DO PIPELINE DE ÁUDIO
+   MIC/AUDIO SOURCE -> CHUNK -> VAD -> FIM DE FALA -> PREP -> UPLOAD
+   -> STT -> TRANSCRIPT_FINAL -> MEMORY -> COACH
+   ============================================================ */
+
+const tel = {
+  audioChunksReceived: 0,
+  lastAudioChunkAt: null,
+  vadSpeechStartCount: 0,
+  vadSpeechEndCount: 0,
+  sttRequestsStarted: 0,
+  sttRequestsCompleted: 0,
+  sttRequestsFailed: 0,
+  transcriptFinalCount: 0,
+  lastTranscriptAt: null,
+  lastCoachDecisionAt: null,
+  memoryUpdates: 0,
+  lastMemoryAt: null,
+  recoveries: 0,
+  lastRecoveryAt: null,
+  lastRecoveryError: null,
+  startedAt: null,
+};
+
+function resetTelemetria() {
+  Object.assign(tel, {
+    audioChunksReceived: 0,
+    lastAudioChunkAt: null,
+    vadSpeechStartCount: 0,
+    vadSpeechEndCount: 0,
+    sttRequestsStarted: 0,
+    sttRequestsCompleted: 0,
+    sttRequestsFailed: 0,
+    transcriptFinalCount: 0,
+    lastTranscriptAt: null,
+    lastCoachDecisionAt: null,
+    memoryUpdates: 0,
+    lastMemoryAt: null,
+    recoveries: 0,
+    lastRecoveryAt: null,
+    lastRecoveryError: null,
+    startedAt: Date.now(),
+  });
+}
+
+function trackInfo() {
+  const track = stream?.getAudioTracks?.()[0] || null;
+  if (!track) return { present: false, readyState: null, muted: null, enabled: null };
+  return { present: true, readyState: track.readyState, muted: track.muted, enabled: track.enabled };
+}
+
+function pipelineHealth(extra) {
+  const now = Date.now();
+  const sttPending = Math.max(0, tel.sttRequestsStarted - tel.sttRequestsCompleted - tel.sttRequestsFailed);
+  return {
+    at: now,
+    running,
+    audio: {
+      ...tel,
+      sttPending,
+      msSinceChunk: tel.lastAudioChunkAt ? now - tel.lastAudioChunkAt : null,
+      msSinceTranscript: tel.lastTranscriptAt ? now - tel.lastTranscriptAt : null,
+      msSinceDecision: tel.lastCoachDecisionAt ? now - tel.lastCoachDecisionAt : null,
+    },
+    audioContext: audioCtx ? audioCtx.state : null,
+    track: trackInfo(),
+    turnos: {
+      currentTurnId,
+      nextExpectedTurnId: nextExpected,
+      lastCommittedTurnId: lastCommitted,
+      pendentes: pendingTurns.size,
+    },
+    ...(extra || {}),
+  };
+}
+
+function emitHealth(extra) {
+  chrome.runtime.sendMessage({ type: "COPILOT_HEALTH", health: pipelineHealth(extra) }).catch(() => {});
+}
+
+/* ============================================================
+   COMMIT ORDENADO DOS TURNOS
+   O STT pode terminar fora de ordem (turn 3 antes do turn 2).
+   A memória e o coach SEMPRE avançam em ordem cronológica.
+   ============================================================ */
+
+const pendingTurns = new Map(); // turnId -> resultado do STT
+const skippedTurns = new Set(); // turnos que nunca produzirão resultado
+let nextExpected = 1;
+let lastCommitted = 0;
+let recSeq = 0;
+
+function resetFila() {
+  pendingTurns.clear();
+  skippedTurns.clear();
+  nextExpected = 1;
+  lastCommitted = 0;
+  recSeq = 0;
+}
+
+function skipTurn(turnId) {
+  if (turnId < nextExpected) return;
+  skippedTurns.add(turnId);
+  drainTurns();
+}
+
+function pushTurnResult(result) {
+  if (result.turnId < nextExpected) return; // duplicata de turno já commitado
+  pendingTurns.set(result.turnId, result);
+  drainTurns();
+}
+
+function drainTurns() {
+  for (;;) {
+    if (skippedTurns.has(nextExpected)) {
+      skippedTurns.delete(nextExpected);
+      nextExpected++;
+      continue;
+    }
+    const hit = pendingTurns.get(nextExpected);
+    if (!hit) break;
+    pendingTurns.delete(nextExpected);
+    lastCommitted = nextExpected;
+    nextExpected++;
+    commitTurn(hit);
+  }
+}
+
+/** Destrava a fila quando um turno anterior nunca chegou (STT perdido). */
+function forceDrain() {
+  const ids = [...pendingTurns.keys()].sort((a, b) => a - b);
+  if (!ids.length) return;
+  for (let id = nextExpected; id < ids[0]; id++) skippedTurns.add(id);
+  drainTurns();
+}
+
+/* ---------- falas curtas contextuais ---------- */
+
+const RESPOSTA_CURTA_RE =
+  /^(sim|n[ãa]o|isso|exato|exatamente|com certeza|certeza|claro|virou|[ée]|[ée] isso|muito|bastante|hoje sim|agora sim|total|totalmente|pode ser|talvez|acho que sim|acho que n[ãa]o|uhum|aham|perfeito|verdade|demais|sempre|nunca|[ée] uma necessidade|necessidade|obviamente|sem d[úu]vida)$/i;
+
+/** Fala curta NUNCA é descartada pela memória quando responde ao contexto anterior. */
+function avaliarFalaCurta(text, contextoAnterior) {
+  const limpo = (text || "").trim();
+  const palavras = limpo ? limpo.split(/\s+/).length : 0;
+  const curta = palavras < 4;
+  if (!curta) return { curta: false, contextual: false, textoParaMemoria: limpo };
+  const ctx = (contextoAnterior || "").trim();
+  const contextual = !!ctx;
+  return {
+    curta: true,
+    contextual,
+    respostaDireta: RESPOSTA_CURTA_RE.test(limpo.replace(/[.,!?]+$/, "")),
+    textoParaMemoria: contextual ? `${ctx} → (cliente) ${limpo}` : limpo,
+  };
+}
+
 /* ---------- camada 1 antecipada: parcial enquanto o cliente fala ---------- */
 
 async function sendPartial(chunks, turnId) {
@@ -304,7 +462,7 @@ async function sendPartial(chunks, turnId) {
   }
 }
 
-/* ---------- pipeline do turno completo ---------- */
+/* ---------- STT do turno completo (pode terminar fora de ordem) ---------- */
 
 async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
   // t = tempo medido a partir do FIM REAL da fala do cliente
@@ -325,18 +483,20 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
     primeiroAlerta: preAlertaMs != null ? Math.min(0, preAlertaMs) : null,
     total: null,
   };
-  const emit = () =>
-    chrome.runtime.sendMessage({ type: "COPILOT_TIMING", turnId, timing: { ...timing } }).catch(() => {});
 
   const prepStart = performance.now();
   const blob = encodeWav(chunks, TARGET_RATE);
-  if (blob.size < 4096) return;
+  if (blob.size < 4096) {
+    skipTurn(turnId);
+    return;
+  }
   timing.prep = Math.round(performance.now() - prepStart);
 
   log("transcrevendo");
 
   let text = "";
   const sttStart = performance.now();
+  tel.sttRequestsStarted++;
   try {
     const form = new FormData();
     form.append("file", blob, "recording.wav");
@@ -345,43 +505,82 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
     const roundTrip = Math.round(performance.now() - sttStart);
     timing.stt = Math.min(roundTrip, data.sttMs ?? roundTrip);
     timing.upload = Math.max(0, roundTrip - timing.stt);
+    tel.sttRequestsCompleted++;
   } catch (e) {
+    tel.sttRequestsFailed++;
     log("erro", { error: `Transcrição: ${e.message}` });
+    skipTurn(turnId); // não trava a fila do próximo turno
+    emitHealth({ ultimoErro: `stt: ${e.message}` });
     return;
   }
 
-  if (!text || text.length < 4) { log("ouvindo"); emit(); return; }
+  if (!text || text.length < 2) {
+    skipTurn(turnId);
+    log("ouvindo");
+    return;
+  }
+
+  // Entra na fila de commit: só avança quando os turnos anteriores foram commitados.
+  pushTurnResult({ turnId, text, timing, alertadoAntes, speechEndAt, t });
+}
+
+/* ---------- commit do turno: transcript_final -> memória -> coach ---------- */
+
+function commitTurn({ turnId, text, timing, alertadoAntes, t }) {
+  tel.transcriptFinalCount++;
+  tel.lastTranscriptAt = Date.now();
+
+  const contextoAnterior = turns.length ? turns[turns.length - 1].text : null;
+  const curta = avaliarFalaCurta(text, contextoAnterior);
 
   // Transcrição COMPLETA: encerra o turno anterior imediatamente na UI.
-  chrome.runtime.sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t(), turnId, final: true }).catch(() => {});
+  chrome.runtime
+    .sendMessage({ type: "COPILOT_TRANSCRIPT", text, ms: t(), turnId, final: true })
+    .catch(() => {});
 
   // Camada 1 — card imediato (regra local), se ainda não apareceu na parcial
   const classStart = performance.now();
   const quick = detect(text, etapaManual);
   timing.classificacao = Math.round(performance.now() - classStart);
-  if (quick && quick.tipo !== alertadoAntes) {
-    if (timing.primeiroAlerta == null) timing.primeiroAlerta = t();
-    push({ ...quick, fonte: "regra", ms: t() }, turnId);
-  } else if (quick && alertadoAntes === quick.tipo) {
-    // o card da parcial deste mesmo turno continua válido — reemite com o turnId final
+  const emit = () =>
+    chrome.runtime.sendMessage({ type: "COPILOT_TIMING", turnId, timing: { ...timing } }).catch(() => {});
+  if (quick) {
+    if (timing.primeiroAlerta == null && quick.tipo !== alertadoAntes) timing.primeiroAlerta = t();
     push({ ...quick, fonte: "regra", ms: t() }, turnId);
   }
   emit();
 
   turns.push({ speaker: "cliente", text });
-  while (turns.length > 4) turns.shift();
+  while (turns.length > 6) turns.shift();
 
-  // Memória viva: roda EM PARALELO, não atrasa o card.
-  atualizarMemoria(text);
+  // Memória viva SEMPRE roda — inclusive em fala curta contextual.
+  atualizarMemoria(curta.curta && curta.contextual ? curta.textoParaMemoria : text);
 
-  // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
-  if (!quick && text.split(/\s+/).length < 4) {
-    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", turnId, decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual, turnId } }).catch(() => {});
+  // Fala curta sem contexto anterior e sem sinal local: não vale chamar a IA.
+  if (!quick && curta.curta && !curta.contextual) {
+    chrome.runtime
+      .sendMessage({
+        type: "COPILOT_DECISION",
+        turnId,
+        decision: {
+          decisao: "NO_TRIGGER_DETECTED",
+          motivo: "fala curta sem contexto anterior",
+          text,
+          etapa: etapaManual,
+          turnId,
+        },
+      })
+      .catch(() => {});
     log("ouvindo");
     return;
   }
 
+  callCoach({ turnId, text, quick, timing, t, curta });
+}
+
+async function callCoach({ turnId, text, quick, timing, t, curta }) {
   const iaStart = performance.now();
+  const sequence = ++recSeq;
   try {
     const card = await apiFetch("/api/public/coach", {
       method: "POST",
@@ -392,15 +591,20 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
         etapa: etapaManual,
         etapaManual,
         memoria,
+        falaCurtaContextual: curta?.curta && curta?.contextual ? curta.textoParaMemoria : null,
         sugestoesAnteriores: [...sugestoesAnteriores],
       }),
     });
 
     timing.ia = Math.round(performance.now() - iaStart);
+    tel.lastCoachDecisionAt = Date.now();
     chrome.runtime
       .sendMessage({
         type: "COPILOT_DECISION",
         turnId,
+        sourceTurnId: turnId,
+        recommendationSequence: sequence,
+        createdAt: Date.now(),
         decision: {
           decisao: card.decisao || (card.tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL"),
           tipo: card.tipo,
@@ -415,11 +619,12 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
           etapaManual,
           memoriaAt,
           turnId,
-          turnsEnviados: turns.map((t) => ({ speaker: t.speaker, text: t.text })),
+          sourceTurnId: turnId,
+          recommendationSequence: sequence,
+          turnsEnviados: turns.map((x) => ({ speaker: x.speaker, text: x.text })),
           memoriaSnapshot: memoria,
           debug: card.debug,
         },
-
       })
       .catch(() => {});
     if (card.spinStatus) memoria.spinStatus = card.spinStatus;
@@ -444,13 +649,14 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
     if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
-      push({ ...card, ms: timing.total }, turnId);
+      push({ ...card, ms: timing.total, sourceTurnId: turnId, recommendationSequence: sequence }, turnId);
     }
-    emit();
+    chrome.runtime.sendMessage({ type: "COPILOT_TIMING", turnId, timing: { ...timing } }).catch(() => {});
   } catch (e) {
     log("erro", { error: `IA: ${e.message}` });
   }
   log("ouvindo");
+  void text;
 }
 
 
@@ -459,12 +665,16 @@ function netReport(info) {
   chrome.runtime.sendMessage({ type: "COPILOT_NET", net: info }).catch(() => {});
 }
 
+const FETCH_TIMEOUT_MS = 20000; // nenhuma requisição pode travar o pipeline para sempre
+
 async function apiFetch(path, init) {
   const url = `${endpoint}${path}`;
   const method = init.method || "POST";
   const started = performance.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, init);
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
     const ms = Math.round(performance.now() - started);
     let body = null;
     try { body = await res.json(); } catch { body = null; }
@@ -473,12 +683,18 @@ async function apiFetch(path, init) {
     return body ?? {};
   } catch (e) {
     const ms = Math.round(performance.now() - started);
+    if (e?.name === "AbortError") {
+      netReport({ url, method, status: null, ok: false, ms, error: "timeout", kind: "timeout" });
+      throw new Error(`Timeout de ${FETCH_TIMEOUT_MS} ms em ${path}`);
+    }
     const isNetwork = e instanceof TypeError || /Failed to fetch|NetworkError/i.test(e.message);
     if (isNetwork) {
       netReport({ url, method, status: null, ok: false, ms, error: e.message, kind: "rede/CORS" });
       throw new Error(`Rede/CORS: ${url} inacessível (${e.message}). Confira host_permissions e a URL do servidor.`);
     }
     throw e;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -490,13 +706,118 @@ function flush(speechEndAt) {
 }
 
 
-async function start(streamId, ep) {
-  endpoint = String(ep || "").replace(/\/+$/, "");
+/* ============================================================
+   WATCHDOG DA CAPTURA
+   O botão em "Parar" NUNCA é prova de que o pipeline está vivo.
+   ============================================================ */
+
+const CHUNK_DEAD_MS = 5000; // sem nenhum callback de áudio = captura morta
+const TRANSCRIPT_STALE_MS = 90000; // áudio fluindo, mas sem transcript_final
+const RECOVER_COOLDOWN_MS = 15000;
+
+let watchdogTimer = null;
+let recoveringAt = 0;
+
+async function recuperarCaptura(motivo) {
+  const now = Date.now();
+  if (recoveringAt && now - recoveringAt < RECOVER_COOLDOWN_MS) return;
+  recoveringAt = now;
+  tel.recoveries++;
+  tel.lastRecoveryAt = now;
+  emitHealth({ recuperando: motivo });
+  log("recuperando", { motivo });
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "COPILOT_RECAPTURE" });
+    if (!res?.ok || !res.streamId) throw new Error(res?.error || "sem streamId");
+    teardownAudio();
+    // MEMÓRIA COMERCIAL PRESERVADA — só o pipeline de áudio é reconstruído.
+    await start(res.streamId, endpoint, { preservarSessao: true });
+    tel.lastRecoveryError = null;
+    emitHealth({ recuperado: motivo });
+  } catch (e) {
+    tel.lastRecoveryError = e?.message || String(e);
+    log("erro", { error: `Captura interrompida e não foi possível recuperar: ${tel.lastRecoveryError}` });
+    emitHealth({ falhaRecuperacao: tel.lastRecoveryError });
+  }
+}
+
+function watchdogTick() {
+  if (!running) return;
+  const now = Date.now();
+
+  // AudioContext suspenso mata o onaudioprocess silenciosamente.
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+
+  const track = stream?.getAudioTracks?.()[0] || null;
+  const trackMorta = !track || track.readyState !== "live";
+  const semChunk = tel.lastAudioChunkAt != null && now - tel.lastAudioChunkAt > CHUNK_DEAD_MS;
+  const nuncaRecebeuChunk = tel.lastAudioChunkAt == null && tel.startedAt && now - tel.startedAt > CHUNK_DEAD_MS;
+
+  if (trackMorta || semChunk || nuncaRecebeuChunk) {
+    recuperarCaptura(trackMorta ? "track encerrada" : "sem chunks de áudio");
+    return;
+  }
+
+  // Áudio fluindo, VAD detectando falas, mas nada vira transcript_final.
+  const refTranscript = tel.lastTranscriptAt || tel.startedAt;
+  if (tel.vadSpeechEndCount > tel.transcriptFinalCount && now - refTranscript > TRANSCRIPT_STALE_MS) {
+    forceDrain(); // fila travada por um turno que nunca chegou
+    emitHealth({ alerta: "áudio fluindo sem transcript_final" });
+  }
+
+  emitHealth();
+}
+
+function startWatchdog() {
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  watchdogTimer = setInterval(watchdogTick, 2000);
+}
+
+function stopWatchdog() {
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  watchdogTimer = null;
+}
+
+function teardownAudio() {
+  try { processor?.disconnect(); source?.disconnect(); } catch {}
+  if (processor) processor.onaudioprocess = null;
+  stream?.getTracks().forEach((tr) => tr.stop());
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+  processor = null;
+  source = null;
+  stream = null;
+  speaking = false;
+  buffer = [];
+  partialInFlight = false;
+}
+
+async function start(streamId, ep, { preservarSessao = false } = {}) {
+  endpoint = String(ep || endpoint || "").replace(/\/+$/, "");
+  if (!preservarSessao) {
+    resetTelemetria();
+    resetFila();
+  } else {
+    tel.startedAt = Date.now();
+    tel.lastAudioChunkAt = null;
+  }
+
   stream = await navigator.mediaDevices.getUserMedia({
     audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } },
   });
 
+  const track = stream.getAudioTracks()[0];
+  if (track) {
+    track.addEventListener("ended", () => {
+      emitHealth({ evento: "track ended" });
+      if (running) recuperarCaptura("track ended");
+    });
+    track.addEventListener("mute", () => emitHealth({ evento: "track mute" }));
+    track.addEventListener("unmute", () => emitHealth({ evento: "track unmute" }));
+  }
+
   audioCtx = new AudioContext();
+  if (audioCtx.state === "suspended") await audioCtx.resume().catch(() => {});
   source = audioCtx.createMediaStreamSource(stream);
   // Devolve o áudio para os alto-falantes — sem isso a aba fica muda.
   source.connect(audioCtx.destination);
@@ -504,6 +825,8 @@ async function start(streamId, ep) {
   processor = audioCtx.createScriptProcessor(4096, 1, 1);
   processor.onaudioprocess = (e) => {
     if (!running) return;
+    tel.audioChunksReceived++;
+    tel.lastAudioChunkAt = Date.now();
     const input = e.inputBuffer.getChannelData(0);
     let sum = 0;
     for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
@@ -519,6 +842,7 @@ async function start(streamId, ep) {
         preAlertAt = null;
         // nova fala = novo turno
         currentTurnId = ++turnSeq;
+        tel.vadSpeechStartCount++;
         chrome.runtime.sendMessage({ type: "COPILOT_TURN_START", turnId: currentTurnId }).catch(() => {});
         log("falando");
       }
@@ -528,9 +852,10 @@ async function start(streamId, ep) {
       buffer.push(downsample(input, audioCtx.sampleRate));
       if (now - lastVoiceAt > SILENCE_MS) {
         speaking = false;
+        tel.vadSpeechEndCount++;
         // fim real da fala = último frame com voz
         if (lastVoiceAt - speechStartedAt >= MIN_SPEECH_MS) flush(lastVoiceAt);
-        else buffer = [];
+        else { buffer = []; skipTurn(currentTurnId); }
       }
     }
 
@@ -542,6 +867,7 @@ async function start(streamId, ep) {
 
     if (speaking && now - speechStartedAt > MAX_TURN_MS) {
       speaking = false;
+      tel.vadSpeechEndCount++;
       flush(now);
     }
 
@@ -550,19 +876,17 @@ async function start(streamId, ep) {
   source.connect(processor);
   processor.connect(audioCtx.destination);
   running = true;
+  startWatchdog();
+  emitHealth({ evento: preservarSessao ? "captura recuperada" : "captura iniciada" });
   log("ouvindo");
 }
 
 function stop() {
   running = false;
-  speaking = false;
-  buffer = [];
+  stopWatchdog();
   preAlertTipo = null;
-  partialInFlight = false;
-  try { processor?.disconnect(); source?.disconnect(); } catch {}
-  stream?.getTracks().forEach((t) => t.stop());
-  audioCtx?.close().catch(() => {});
-  audioCtx = null;
+  teardownAudio();
+  emitHealth({ evento: "captura parada" });
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -570,9 +894,12 @@ chrome.runtime.onMessage.addListener((msg) => {
     // Nova sessão de call: zera memória, histórico e cards.
     etapaManual = msg.etapa || "rapport";
     resetSessao();
+    resetFila();
+    resetTelemetria();
     start(msg.streamId, msg.endpoint).catch((e) => log("erro", { error: e.message }));
   }
   if (msg?.type === "OFFSCREEN_STOP") stop();
+  if (msg?.type === "COPILOT_HEALTH_REQUEST") emitHealth();
   if (msg?.type === "COPILOT_ETAPA" && msg.etapa) {
     etapaManual = msg.etapa;
     memoria.etapaAtual = etapaManual;
