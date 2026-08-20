@@ -419,7 +419,13 @@ export const Route = createFileRoute("/api/public/coach")({
             if (typeof obj["porque"] === "string") porqueIA = (obj["porque"] as string).trim().slice(0, 180);
 
             // Trava semântica: a frase tenta descobrir algo que o cliente já respondeu.
-            const repetiu = fraseRepetida(memoria.mapa, fraseIA);
+            let repetiu = fraseRepetida(memoria.mapa, fraseIA);
+            if (repetiu && decisaoComercial.exemplo && !fraseRepetida(memoria.mapa, decisaoComercial.exemplo)) {
+              debug["fraseDescartada"] = fraseIA;
+              debug["fraseDaRota"] = decisaoComercial.exemplo;
+              fraseIA = decisaoComercial.exemplo;
+              repetiu = null;
+            }
             if (repetiu)
               return nada("PERGUNTA_JA_RESPONDIDA", {
                 ...debug,
@@ -559,10 +565,12 @@ export const Route = createFileRoute("/api/public/coach")({
           let frase = raw.length >= 12 ? raw : base.frase;
           const repetiuFinal = fraseRepetida(memoria.mapa, frase);
           if (repetiuFinal) {
-            // Já respondido nesta call: não repetimos a pergunta — orientamos sem frase.
+            // Já respondido nesta call: em vez de repetir, avançamos pela rota dominante.
             debug["fraseDescartada"] = frase;
             debug["slotRepetido"] = repetiuFinal;
-            frase = "";
+            const alternativa = decisaoComercial.exemplo ?? "";
+            frase = alternativa && !fraseRepetida(memoria.mapa, alternativa) ? alternativa : "";
+            if (frase) debug["fraseDaRota"] = frase;
           }
 
           return Response.json(
