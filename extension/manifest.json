@@ -12,7 +12,8 @@
   ],
   "host_permissions": [
     "https://fanaticoscopilot.lovable.app/*",
-    "http://localhost:8080/*"
+    "http://localhost:8080/*",
+    "https://*.zoom.us/*"
   ],
   "background": {
     "service_worker": "background.js"
