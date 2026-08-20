@@ -261,6 +261,41 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
     nivel: "atencao",
     etapa: "spin",
   },
+  spin_objetivo: {
+    rotulo: "DESCUBRA O OBJETIVO",
+    orientacao: "Descubra o que ele quer conquistar com o inglês.",
+    frase: "O que o inglês destravaria pra você que hoje não acontece?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_problema: {
+    rotulo: "DESCUBRA O PROBLEMA",
+    orientacao: "Objetivo claro. Descubra o que hoje trava.",
+    frase: "Hoje, em que momento exatamente o inglês te trava?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_implicacao: {
+    rotulo: "APROFUNDE A IMPLICAÇÃO",
+    orientacao: "Explore a consequência concreta desse problema.",
+    frase: "O que isso já te custou na prática?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_confirmacao: {
+    rotulo: "CONFIRME A NECESSIDADE",
+    orientacao: "Confirme com as palavras dele antes de avançar.",
+    frase: "Então o que você precisa é destravar a fala no dia a dia, é isso?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_suficiente: {
+    rotulo: "SPIN SUFICIENTE",
+    orientacao: "Você já tem material suficiente. Avance.",
+    frase: "",
+    nivel: "positivo",
+    etapa: "spin",
+  },
   falta_problema: {
     rotulo: "FALTA PROBLEMA",
     orientacao: "Descubra o que hoje impede esse avanço.",
@@ -268,6 +303,7 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
     nivel: "atencao",
     etapa: "spin",
   },
+
   aprofunde: {
     rotulo: "APROFUNDE",
     orientacao: "A resposta ainda está superficial.",
