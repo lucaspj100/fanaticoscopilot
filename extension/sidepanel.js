@@ -473,7 +473,8 @@ els.toggle.addEventListener("click", async () => {
   if (running) {
     await chrome.runtime.sendMessage({ type: "COPILOT_STOP" });
     setRunning(false);
-    els.status.textContent = "Parado.";
+    CopilotLog.stop();
+    els.status.textContent = `Parado. Sessão ${CopilotLog.sessionId} pronta para exportar.`;
     return;
   }
   els.status.textContent = "Conectando à aba…";
@@ -485,6 +486,7 @@ els.toggle.addEventListener("click", async () => {
   renderTurnoDiag();
   memoriaAt = null;
   renderMemoria(null, []);
+  CopilotLog.start(etapaAtual);
   const res = await chrome.runtime.sendMessage({
     type: "COPILOT_START",
     endpoint: els.endpoint.value.trim() || DEFAULT_ENDPOINT,
