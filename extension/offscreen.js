@@ -226,7 +226,8 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
     primeiroAlerta: preAlertaMs != null ? Math.min(0, preAlertaMs) : null,
     total: null,
   };
-  const emit = () => chrome.runtime.sendMessage({ type: "COPILOT_TIMING", timing: { ...timing } }).catch(() => {});
+  const emit = () =>
+    chrome.runtime.sendMessage({ type: "COPILOT_TIMING", turnId, timing: { ...timing } }).catch(() => {});
 
   const prepStart = performance.now();
   const blob = encodeWav(chunks, TARGET_RATE);
@@ -311,6 +312,8 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
           etapaManual,
           memoriaAt,
           turnId,
+          turnsEnviados: turns.map((t) => ({ speaker: t.speaker, text: t.text })),
+          memoriaSnapshot: memoria,
           debug: card.debug,
         },
 
