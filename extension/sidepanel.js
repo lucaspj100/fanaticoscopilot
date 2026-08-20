@@ -17,6 +17,7 @@ const els = {
   diagToggle: document.getElementById("diag-toggle"),
   diagPanel: document.getElementById("diag-panel"),
   decision: document.getElementById("decision"),
+  turno: document.getElementById("turno"),
   memoria: document.getElementById("memoria"),
 };
 
