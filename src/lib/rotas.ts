@@ -461,10 +461,10 @@ export function decidirProximaAcao(params: {
   perguntasSeguidas?: number;
   objecaoAtiva?: boolean;
   /** V3.0 — camada de contribuição. */
-  perfil?: PerfilCliente;
-  sinais?: Partial<SinaisFala>;
-  dorAtual?: DorAtual;
-  clienteEngajado?: boolean;
+  perfil?: PerfilCliente | undefined;
+  sinais?: Partial<SinaisFala> | undefined;
+  dorAtual?: DorAtual | undefined;
+  clienteEngajado?: boolean | undefined;
 }): Decisao {
   const mapa = params.mapa ?? novoMapa();
   const ativas = rotasAtivas(params.motivacoes);

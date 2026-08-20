@@ -192,13 +192,13 @@ const val = (m: Mapa, k: keyof Mapa): string | null => {
  * perguntar continua sendo a melhor ação.
  */
 export function escolherContribuicao(params: {
-  mapa?: Mapa;
-  perfil?: PerfilCliente;
-  sinais?: Partial<SinaisFala>;
-  dorAtual?: DorAtual;
-  perguntasSeguidas?: number;
-  rota?: string | null;
-  clienteEngajado?: boolean;
+  mapa?: Mapa | undefined;
+  perfil?: PerfilCliente | undefined;
+  sinais?: Partial<SinaisFala> | undefined;
+  dorAtual?: DorAtual | undefined;
+  perguntasSeguidas?: number | undefined;
+  rota?: string | null | undefined;
+  clienteEngajado?: boolean | undefined;
 }): Contribuicao | null {
   const mapa = params.mapa ?? novoMapa();
   const sinais = params.sinais ?? {};
@@ -318,10 +318,10 @@ export type ValorIntervencao = {
 export function valorDaIntervencao(
   frase: string,
   ctx: {
-    ultimaFalaCliente?: string;
-    sugestoesAnteriores?: string[];
-    perguntasSeguidas?: number;
-    dificuldade?: Dificuldade;
+    ultimaFalaCliente?: string | undefined;
+    sugestoesAnteriores?: string[] | undefined;
+    perguntasSeguidas?: number | undefined;
+    dificuldade?: Dificuldade | undefined;
   } = {},
 ): ValorIntervencao {
   const f = (frase || "").trim();
@@ -352,10 +352,10 @@ export function valorDaIntervencao(
  * ------------------------------------------------------------------ */
 
 export function contribuicaoParaPrompt(params: {
-  perfil?: PerfilCliente;
-  dorAtual?: DorAtual;
-  perguntasSeguidas?: number;
-  contribuicao?: Contribuicao | null;
+  perfil?: PerfilCliente | undefined;
+  dorAtual?: DorAtual | undefined;
+  perguntasSeguidas?: number | undefined;
+  contribuicao?: Contribuicao | null | undefined;
 }): string {
   const perfil = { ...novoPerfil(), ...(params.perfil ?? {}) };
   const dif = dificuldadeCliente(perfil);
