@@ -129,12 +129,17 @@ A situação JÁ foi classificada. Sua única tarefa: escrever UMA frase que o v
 REGRAS:
 - Responda APENAS a frase. Sem aspas, sem rótulos, sem explicação, sem alternativas.
 - Máximo 18 palavras. Português falado, natural, como uma pessoa conversando.
-- Nada de linguagem formal, corporativa ou de manual ("de que maneira", "o quanto isso impactou seus planos").
-- Prefira: "Como isso te afetou na prática?", "E o que isso acabou te custando?".
-- Use as palavras que o próprio cliente usou.
+- Uma única pergunta/ação. Nada de duas perguntas na mesma frase.
+- Nada de linguagem formal, corporativa ou de manual ("de que maneira", "gostaria de entender melhor", "o quanto isso impactou seus planos").
+- Não comece com "Sem problemas", "Entendo perfeitamente" ou preâmbulos vazios.
+- Prefira: "Hoje, onde o inglês mais te trava?", "E isso já te fez perder alguma oportunidade?", "É o valor em si ou a forma de pagamento?".
+- Use as palavras que o próprio cliente usou. Nunca invente motivo, objetivo, problema, objeção, urgência, prazo ou terceiros.
+- Se o contexto não permitir adaptar, use uma pergunta segura e genérica do playbook — nunca uma suposição.
+- Não repita literalmente uma pergunta que o vendedor acabou de fazer.
 - Nunca responda a objeção: faça a pergunta que revela a trava real.
 - Nunca ofereça desconto, condição, preço ou prazo.
 `.trim();
+
 
 /** Trecho do playbook enviado APENAS quando a situação corresponde. */
 export const RULE_SNIPPETS: Record<string, string> = {
