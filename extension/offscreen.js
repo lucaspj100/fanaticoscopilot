@@ -422,7 +422,15 @@ function stop() {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "OFFSCREEN_START") {
+    // Nova sessão de call: zera memória, histórico e cards.
+    etapaManual = msg.etapa || "rapport";
+    resetSessao();
     start(msg.streamId, msg.endpoint).catch((e) => log("erro", { error: e.message }));
   }
   if (msg?.type === "OFFSCREEN_STOP") stop();
+  if (msg?.type === "COPILOT_ETAPA" && msg.etapa) {
+    etapaManual = msg.etapa;
+    memoria.etapaAtual = etapaManual;
+  }
+
 });
