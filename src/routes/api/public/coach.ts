@@ -174,16 +174,26 @@ export const Route = createFileRoute("/api/public/coach")({
         const memoria = normalizarMemoria(parsed.memoria);
         const memoriaTexto = memoriaParaPrompt(memoria);
         const camposMemoria = camposPreenchidos(memoria);
-        const spinPronto = spinSuficiente(memoria);
+        const avSpin = avaliacaoSpin(memoria);
+        const spinPronto = avSpin.suficiente;
         const blocoContexto = memoriaTexto
           ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
           : "";
         const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
         const blocoSpin = isSpin
           ? `\nESTADO DO SPIN: ${derivarSpinStatus(memoria)}${
-              spinPronto ? " — SPIN SUFICIENTE: não investigue mais, confirme e avance." : ""
+              spinPronto
+                ? ` — SPIN SUFICIENTE (${avSpin.motivo}): não investigue mais, confirme e avance.`
+                : `\nMATERIAL COMERCIAL AINDA INSUFICIENTE: ${avSpin.motivo}.\nAPROFUNDE PRIMEIRO: ${
+                    avSpin.faltando.slice(0, 2).join(" e ") || "o impacto real"
+                  }.${
+                    avSpin.minimizou
+                      ? "\nATENÇÃO: o cliente MINIMIZOU a dor. Não confronte; peça um exemplo concreto da última vez que o inglês atrapalhou."
+                      : ""
+                  }`
             }`
           : "";
+
 
         // ---- Mapa vivo do cliente: o que já sabemos e o que ainda falta.
         const mapaTexto = mapaDaMemoria(memoria);
