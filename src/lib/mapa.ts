@@ -38,6 +38,7 @@ export const SLOT_KEYS = [
   "disponibilidade",
   "barreira_tempo",
   "percepcao_metodologia",
+  "criterio_compra",
   "interesse",
   "decisor",
   "financeiro",
@@ -201,6 +202,18 @@ export const SLOTS: Record<SlotKey, SlotMeta> = {
     ],
     alvo: [/(metodologia|como voc[êe] gosta de (estudar|aprender)|o que espera do m[ée]todo)/i],
   },
+  criterio_compra: {
+    rotulo: "CRITÉRIO DE COMPRA",
+    prioridade: 7,
+    respondido: [
+      /\b(precisa (ter|ser)|preciso que (tenha|seja)|procuro (algo|um curso) que|tem que (ter|ser)|o importante (pra mim )?[ée])\b[^.!?]{4,}/i,
+      /\b(hor[áa]rio flex[íi]vel|aula ao vivo|conversa[çc][ãa]o|acompanhamento|certifica[çc][ãa]o|professor nativo|pr[áa]tica de verdade)\b/i,
+    ],
+    alvo: [
+      /(o que.*(curso|solu[çc][ãa]o).*precisa ter|o que voc[êe] (espera|busca) (de um|no) curso|o que precisa existir (num|em um) curso)/i,
+    ],
+  },
+
   interesse: {
     rotulo: "INTERESSE",
     prioridade: 12,
@@ -420,7 +433,7 @@ function normalizarPatch(patch: unknown): Partial<Record<SlotKey, Slot>> {
 
 export type AvaliacaoSpin = {
   suficiente: boolean;
-  condicao: "A" | "B" | "C" | null;
+  condicao: "A" | "B" | "C" | "D" | null;
   faltando: string[];
   motivo: string;
   /** Cliente minimizou a dor e isso ainda não foi superado. */
@@ -438,7 +451,7 @@ const profundo = (s?: Slot) => !!s && s.estado === "respondido" && (s.profundida
  * Condição B: problema relevante + urgência/gatilho forte + intenção clara.
  * Condição C: o próprio cliente entregou objetivo + problema + consequência + razão para agir.
  */
-export function avaliarSpin(mapa: Mapa): AvaliacaoSpin {
+export function avaliarSpin(mapa: Mapa, rota?: string | null): AvaliacaoSpin {
   const m = mapa ?? novoMapa();
   const objetivo = m.objetivo;
   const problema = m.problema;
@@ -484,6 +497,21 @@ export function avaliarSpin(mapa: Mapa): AvaliacaoSpin {
     return { suficiente: true, condicao: "B", faltando: [], motivo: "problema + gatilho forte + intenção clara", minimizou };
   if (objetivoOk && problemaOk && impactoOk && (necessidadeOk || urgenciaOk))
     return { suficiente: true, condicao: "C", faltando: [], motivo: "cliente entregou o quadro completo", minimizou };
+  // Condição D (V2.8) — cliente de AMBIÇÃO: não existe dor, e forçar sofrimento seria artificial.
+  // Basta futuro desejado concreto + timing + o que ele espera da solução.
+  if (
+    rota === "ambicao_crescimento" &&
+    forte(objetivo) &&
+    urgenciaOk &&
+    (necessidadeOk || m.criterio_compra?.estado === "respondido")
+  )
+    return {
+      suficiente: true,
+      condicao: "D",
+      faltando: [],
+      motivo: "ambição concreta + timing + critério — material suficiente sem dor forçada",
+      minimizou,
+    };
 
   return {
     suficiente: false,

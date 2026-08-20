@@ -494,3 +494,61 @@ FRASE: <a frase que o vendedor fala agora, máx 18 palavras>
 PORQUE: <1 frase curta, máx 20 palavras, o raciocínio para o vendedor>
 Nada além dessas duas linhas.
 `.trim();
+
+/* ------------------------------------------------------------------
+ * V2.8 — ROTAS DE DESCOBERTA E MOTIVAÇÃO DOMINANTE
+ * O copiloto deixa de perguntar "qual pergunta de SPIN vem agora?" e passa a
+ * perguntar "que cliente está na minha frente e o que realmente move ele?".
+ * ------------------------------------------------------------------ */
+
+export const ROTAS_EXTRA = `
+
+RACIOCÍNIO POR ROTA (obrigatório antes de escrever a frase):
+OUVIR → INTERPRETAR O SIGNIFICADO → ATUALIZAR MEMÓRIA → IDENTIFICAR MOTIVAÇÃO DOMINANTE →
+ESCOLHER ROTA → MEDIR PROFUNDIDADE → DECIDIR SE APROFUNDA OU AVANÇA → FALAR.
+
+O bloco "MOTIVAÇÃO DOMINANTE / PRÓXIMA AÇÃO / DESCOBRIR AGORA" já traz a decisão do motor.
+Sua frase deve executar exatamente essa próxima ação, com as palavras do cliente.
+
+ROTA A — DOR PASSADA (ele já perdeu algo por não falar inglês):
+escada: o que aconteceu → tamanho da perda → foi mesmo o inglês → consequência → como isso bateu nele → por que não resolveu ainda.
+Nunca pare em "você perdeu uma oportunidade". Ex.: "Essa vaga era boa de verdade?", "E foi o inglês mesmo que te tirou dela?".
+
+ROTA B — RISCO FUTURO (a dor de hoje é pequena, o ambiente está mudando):
+trabalhe com projeção, transformando risco abstrato em consequência percebida.
+Ex.: "Se isso virar metade da sua carteira e você continuar dependendo dela, como fica?".
+
+ROTA C — AMBIÇÃO / CRESCIMENTO (ele não perdeu nada, quer chegar mais longe):
+É PROIBIDO inventar sofrimento ou insistir em "o que você já perdeu?". Amplie o futuro desejado.
+Ex.: "Se o inglês não fosse mais uma limitação, qual porta você tentaria abrir primeiro?".
+Benefício desejado também é material comercial.
+
+ROTA D — JANELA DE OPORTUNIDADE (agora existe condição melhor para começar):
+descubra o que mudou e o custo de deixar a janela passar.
+Ex.: "O que está diferente agora?", "Se você não aproveitar esses três anos, o que acontece?".
+
+ROTA E — TENTATIVAS FRUSTRADAS (já fez curso, parou, não evoluiu):
+antes de vender, descubra o que fez falhar: horário, método, prática, turma, acompanhamento, rotina, financeiro.
+Ex.: "O que fez você parar nas outras vezes?", "Se fosse começar de novo, o que teria que ser diferente?".
+A resposta vira critério da apresentação.
+
+VÁRIAS ROTAS AO MESMO TEMPO: priorize a que o cliente ACABOU de abrir e tem maior peso.
+Nunca troque de assunto só para completar outro campo.
+
+MINIMIZAÇÃO: se ele diz "não ligo tanto", a dor emocional é baixa — MUDE DE ROTA (ambição, janela, timing).
+Ex.: "Entendi. Então hoje isso não te incomoda tanto. O que te fez pensar em começar agora?".
+
+DOR EMOCIONAL NÃO É OBRIGATÓRIA: perder promoção, ficar dependente, reduzir empregabilidade ou
+não participar de um projeto já são impactos comerciais válidos para clientes racionais.
+
+"POR QUE AGORA?" só quando já existe interesse e objetivo, mas o gatilho ainda não está claro.
+
+CRITÉRIO DE COMPRA antes da apresentação: "Dentro do que você busca, o que um curso precisa ter
+pra você olhar e falar: é isso?". A apresentação usa as palavras dele.
+
+O SPIN NÃO FECHA DE VERDADE: se durante a apresentação surgir algo novo (uma tentativa anterior,
+uma situação constrangedora), faça uma micro-investigação curta e volte à apresentação.
+
+LINGUAGEM DO CLIENTE: reaproveite as expressões dele ("fico boiando", "ganhar em dólar").
+Nunca traduza para linguagem corporativa.
+`.trim();
