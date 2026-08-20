@@ -372,38 +372,35 @@ function renderTurnoDiag() {
   );
 }
 
-function renderCard(card) {
-  if (!card || card.tipo === "nenhum") return;
-  const turnId = card.turnId ?? currentTurnId;
-  // Card de turno já superado: descarta.
-  if (turnId < currentTurnId) return;
-  if (turnId > currentTurnId) {
-    currentTurnId = turnId;
+/** Renderiza SEMPRE o estado central do background (fonte única da verdade). */
+let seenSequence = -1;
+function renderActive(state) {
+  if (!state) return;
+  const sequence = state.sequence ?? 0;
+  if (sequence < seenSequence) return; // resposta fora de ordem: descarta
+  seenSequence = sequence;
+  currentTurnId = Math.max(currentTurnId, state.turnId || 0);
+
+  if (state.kind === "card" && state.rec) {
+    const card = state.rec;
+    if (atual && atual.el && atual.card.id === card.id) {
+      fillCard(atual.el, card); // mesmo card: atualiza no lugar
+      atual = { card, el: atual.el, turnId: card.turnId ?? currentTurnId };
+    } else {
+      const el = buildCard(card);
+      fillCard(el, card);
+      els.cards.replaceChildren(el); // no máximo UMA recomendação visível
+      atual = { card, el, turnId: card.turnId ?? currentTurnId };
+    }
+  } else {
     atual = null;
+    if (state.kind === "analisando") showEstado("Analisando…", "analisando");
+    else if (state.kind === "silencio") showEstado("Sem intervenção agora.", "silencio");
+    else els.cards.replaceChildren();
   }
-
-  // Mesmo turno + mesma situação: completa o card no lugar (a IA só traz a frase).
-  if (atual && atual.turnId === turnId && atual.card.tipo === card.tipo) {
-    const merged = { ...atual.card, ...card, frase: card.frase || atual.card.frase };
-    fillCard(atual.el, merged);
-    atual = { card: merged, el: atual.el, turnId };
-    renderTurnoDiag();
-    return;
-  }
-
-  // Concorrência DENTRO do mesmo turno: só troca por algo mais importante.
-  if (atual && atual.turnId === turnId) {
-    const novo = GRUPO[card.tipo] ?? 0;
-    const velho = GRUPO[atual.card.tipo] ?? 0;
-    if (novo <= velho) return;
-  }
-
-  const el = buildCard(card);
-  fillCard(el, card);
-  els.cards.replaceChildren(el); // no máximo UMA situação visível
-  atual = { card, el, turnId };
   renderTurnoDiag();
 }
+
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
