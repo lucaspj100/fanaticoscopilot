@@ -252,29 +252,6 @@ function setRunning(on) {
 /* ---------- estabilidade do card ---------- */
 /* Grupos: 5 fechamento/sim · 4 objeção · 3 pergunta direta
    2 aprofundamento · 1 alerta de processo */
-const GRUPO = {
-  fechou: 5,
-  intencao_compra: 5,
-  pedido_decisao: 5,
-  financeiro: 4,
-  pensar: 4,
-  segunda_opiniao: 4,
-  tempo: 4,
-  nao_negocie: 4,
-  isolar_financeiro: 4,
-  metodologia: 3,
-  criterio_compra: 3,
-  validar_solucao: 3,
-  quatro_fatores: 3,
-  aprofunde: 2,
-  aprofunde_objetivo: 2,
-  falta_problema: 2,
-  falta_implicacao: 2,
-  interesse: 2,
-  personalize: 1,
-  di_ausente: 1,
-  rapport_longo: 1,
-};
 
 const ETAPA_LABEL = {
   rapport: "Rapport",
@@ -285,8 +262,8 @@ const ETAPA_LABEL = {
   fechamento: "Fechamento",
 };
 
-/* O card pertence a um TURNO de fala, nunca a uma janela de tempo.
-   A prioridade (GRUPO) só arbitra resultados concorrentes do MESMO turno. */
+/* A recomendação ativa vive no background (fonte única da verdade).
+   Aqui só renderizamos o estado recebido; nada é decidido localmente. */
 
 let atual = null; // { card, el, turnId }
 let currentTurnId = 0;
@@ -345,15 +322,6 @@ function showEstado(texto, classe) {
   els.cards.replaceChildren(el);
 }
 
-/** Novo turno: o card do turno anterior deixa de ser orientação válida. */
-function invalidarTurno(turnId) {
-  if (turnId <= currentTurnId && atual && atual.turnId === turnId) return;
-  currentTurnId = Math.max(currentTurnId, turnId);
-  atual = null;
-  showEstado("Analisando…", "analisando");
-  renderTurnoDiag();
-}
-
 function renderTurnoDiag() {
   if (!els.turno) return;
   const linhas = [
@@ -372,51 +340,46 @@ function renderTurnoDiag() {
   );
 }
 
-function renderCard(card) {
-  if (!card || card.tipo === "nenhum") return;
-  const turnId = card.turnId ?? currentTurnId;
-  // Card de turno já superado: descarta.
-  if (turnId < currentTurnId) return;
-  if (turnId > currentTurnId) {
-    currentTurnId = turnId;
+/** Renderiza SEMPRE o estado central do background (fonte única da verdade). */
+let seenSequence = -1;
+function renderActive(state) {
+  if (!state) return;
+  const sequence = state.sequence ?? 0;
+  if (sequence < seenSequence) return; // resposta fora de ordem: descarta
+  seenSequence = sequence;
+  currentTurnId = Math.max(currentTurnId, state.turnId || 0);
+
+  if (state.kind === "card" && state.rec) {
+    const card = state.rec;
+    if (atual && atual.el && atual.card.id === card.id) {
+      fillCard(atual.el, card); // mesmo card: atualiza no lugar
+      atual = { card, el: atual.el, turnId: card.turnId ?? currentTurnId };
+    } else {
+      const el = buildCard(card);
+      fillCard(el, card);
+      els.cards.replaceChildren(el); // no máximo UMA recomendação visível
+      atual = { card, el, turnId: card.turnId ?? currentTurnId };
+    }
+  } else {
     atual = null;
+    if (state.kind === "analisando") showEstado("Analisando…", "analisando");
+    else if (state.kind === "silencio") showEstado("Sem intervenção agora.", "silencio");
+    else els.cards.replaceChildren();
   }
-
-  // Mesmo turno + mesma situação: completa o card no lugar (a IA só traz a frase).
-  if (atual && atual.turnId === turnId && atual.card.tipo === card.tipo) {
-    const merged = { ...atual.card, ...card, frase: card.frase || atual.card.frase };
-    fillCard(atual.el, merged);
-    atual = { card: merged, el: atual.el, turnId };
-    renderTurnoDiag();
-    return;
-  }
-
-  // Concorrência DENTRO do mesmo turno: só troca por algo mais importante.
-  if (atual && atual.turnId === turnId) {
-    const novo = GRUPO[card.tipo] ?? 0;
-    const velho = GRUPO[atual.card.tipo] ?? 0;
-    if (novo <= velho) return;
-  }
-
-  const el = buildCard(card);
-  fillCard(el, card);
-  els.cards.replaceChildren(el); // no máximo UMA situação visível
-  atual = { card, el, turnId };
   renderTurnoDiag();
 }
 
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
+  // Estado central: única origem do que o sidepanel mostra.
+  if (msg?.type === "COPILOT_ACTIVE_REC") renderActive(msg.state);
   if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) {
-    currentTurnId = 0;
-    atual = null;
     ultimaTranscricao = null;
+    seenSequence = -1;
     renderTurnoDiag();
   }
-  if (msg?.type === "COPILOT_CARD") {
-    CopilotLog.card(msg.card);
-    renderCard(msg.card);
-  }
+  if (msg?.type === "COPILOT_CARD") CopilotLog.card(msg.card);
   if (msg?.type === "COPILOT_TIMING") {
     CopilotLog.latency(msg.timing, msg.turnId);
     renderTiming(msg.timing);
@@ -425,14 +388,6 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_DECISION") {
     CopilotLog.decision(msg.decision);
     renderDecision(msg.decision);
-    const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
-    const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
-    if (turnId >= currentTurnId && semAcao && (!atual || atual.turnId <= turnId)) {
-      atual = null;
-      currentTurnId = Math.max(currentTurnId, turnId);
-      showEstado("Sem intervenção agora.", "silencio");
-      renderTurnoDiag();
-    }
   }
   if (msg?.type === "COPILOT_MEMORY") {
     memoriaAt = msg.at || null;
@@ -448,11 +403,9 @@ chrome.runtime.onMessage.addListener((msg) => {
     const turnId = msg.turnId ?? currentTurnId;
     // Histórico interno COMPLETO (a UI mostra só os últimos itens).
     CopilotLog.transcript({ turnId, text: msg.text, parcial: !!msg.parcial, ms: msg.ms });
-    // Transcrição COMPLETA de um turno novo encerra o card anterior na hora.
     if (msg.final) {
       ultimaTranscricao = { turnId, text: msg.text };
-      if (turnId > currentTurnId || (atual && atual.turnId < turnId)) invalidarTurno(turnId);
-      else renderTurnoDiag();
+      renderTurnoDiag();
     }
     const li = document.createElement("li");
     li.textContent = `#${turnId} ${msg.parcial ? "· " : ""}${msg.text}  (${msg.ms} ms)`;
@@ -460,6 +413,13 @@ chrome.runtime.onMessage.addListener((msg) => {
     while (els.transcript.children.length > 20) els.transcript.lastElementChild.remove();
   }
 });
+
+// Reload do sidepanel: recupera a recomendação atualmente válida.
+chrome.runtime
+  .sendMessage({ type: "GET_ACTIVE_RECOMMENDATION" })
+  .then((res) => res?.ok && renderActive(res.state))
+  .catch(() => {});
+
 
 /* ---------- exportação do teste da call ---------- */
 
