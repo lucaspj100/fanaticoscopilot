@@ -27,7 +27,7 @@ export const NAO_ENTENDEU =
 
 /** Negação explícita de dor atual — o cliente diz que o inglês não pesa hoje. */
 export const NEGACAO_DOR =
-  /\b(n[ãa]o (faz falta|me faz falta|atrapalha|impede|trava|prejudica|limita|interfere)|nunca perdi|n[ãa]o perdi (nada|nenhuma|vaga|oportunidade)|n[ãa]o [ée] (um )?(impeditivo|barreira|problema|empecilho)|n[ãa]o tem impacto|sem impacto|consigo trabalhar (normalmente|sem)|no meu trabalho (atual )?n[ãa]o|n[ãa]o preciso de ingl[êe]s (hoje|no meu))\b/i;
+  /\b(n[ãa]o (faz falta|me faz falta|atrapalha|impede|trava|prejudica|limita|interfere)|nunca perdi|n[ãa]o perdi (nada|nenhuma|vaga|oportunidade)|n[ãa]o [ée] (um |uma )?(impeditivo|barreira|problema|empecilho)|n[ãa]o tem impacto|sem impacto|consigo trabalhar (normalmente|sem)|no meu trabalho (atual )?n[ãa]o|n[ãa]o preciso de ingl[êe]s (hoje|no meu))\b/i;
 
 /** Resposta genérica que não move a conversa ("é importante", "acho que sim"). */
 export const RESPOSTA_VAGA =
