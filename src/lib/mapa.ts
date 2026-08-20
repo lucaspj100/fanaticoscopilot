@@ -13,15 +13,26 @@
 
 export type SlotEstado = "nao_explorado" | "parcial" | "respondido";
 
-export type Slot = { estado: SlotEstado; valor: string | null };
+/**
+ * Profundidade comercial do slot (V2.7):
+ * - baixa: existe informação, mas genérica ("preciso de inglês", "quero crescer")
+ * - media: já há contexto concreto, sem consequência clara
+ * - alta: há situação concreta + consequência prática/profissional/financeira/emocional
+ */
+export type Profundidade = "baixa" | "media" | "alta";
+
+export type Slot = { estado: SlotEstado; valor: string | null; profundidade?: Profundidade };
 
 export const SLOT_KEYS = [
   "objetivo",
   "motivacao",
   "problema",
   "impacto",
+  "necessidade",
   "oportunidade_perdida",
   "urgencia",
+  "gatilho_agora",
+  "minimizacao",
   "experiencia_anterior",
   "motivo_interrupcao",
   "disponibilidade",
@@ -34,6 +45,7 @@ export const SLOT_KEYS = [
   "sinais_compra",
   "sinais_resistencia",
 ] as const;
+
 
 export type SlotKey = (typeof SLOT_KEYS)[number];
 
