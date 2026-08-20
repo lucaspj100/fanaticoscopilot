@@ -85,9 +85,14 @@ function renderMemoria(memoria, alterados = []) {
       continue;
     }
     const sufixo = dado.estado === "parcial" ? " (parcial)" : "";
-    linhas.push([`mapa.${slot}`, rot + sufixo, dado.valor || "sim"]);
+    const prof = dado.profundidade ? ` [${dado.profundidade}]` : "";
+    linhas.push([`mapa.${slot}`, rot + sufixo + prof, dado.valor || "sim"]);
   }
   if (faltando.length) linhas.push(["mapa.lacunas", "AINDA NÃO EXPLORADO", faltando.slice(0, 6).join(" · ")]);
+  if (mapa.minimizacao && mapa.minimizacao.estado === "respondido") {
+    linhas.push(["mapa.minimizacao_alerta", "ATENÇÃO", "cliente minimizou a dor — não encerre o SPIN"]);
+  }
+
 
   if (!linhas.length) {
     const p = document.createElement("li");
