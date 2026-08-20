@@ -48,18 +48,23 @@ const MEMORIA_VAZIA = {
   sinaisCompra: [],
   informacoesImportantes: [],
   ultimaInteracao: null,
+  diStatus: "nao_apresentada",
+  diMotivoResistencia: null,
+  diCriteriosParaDecidir: [],
 };
 
 let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
 let memoria = { ...MEMORIA_VAZIA };
 let memoriaAt = null;
 let memoriaInFlight = false;
+let sugestoesAnteriores = []; // últimas frases sugeridas — evita repetir pergunta
 
 function resetSessao() {
   turns.length = 0;
   memoria = { ...MEMORIA_VAZIA, etapaAtual: etapaManual };
   memoriaAt = null;
   memoriaInFlight = false;
+  sugestoesAnteriores = [];
   preAlertTipo = null;
   preAlertAt = null;
   turnSeq = 0;
@@ -136,12 +141,41 @@ const FALLBACKS = {
   aprofunde: { rotulo: "APROFUNDE", nivel: "atencao", orientacao: "A resposta ainda está superficial." },
 };
 
-function detect(text) {
-  for (const [tipo, patterns] of RULES) {
-    for (const p of patterns) if (p.test(text)) return { tipo, ...FALLBACKS[tipo] };
+/* Etapa D.I.: o objetivo é a Regra do Jogo. Assunto citado não sequestra a orientação. */
+const DI_RULES = [
+  ["di_pede_apresentacao", [/(me )?(apresent|mostr|explic)\w*\s+(como funciona|a proposta|o curso|voc[êe]s)/i, /\bquero (conhecer|entender) (voc[êe]s|a proposta|o curso)\b/i, /\bj[áa] (te )?(falei|disse|respondi)\b/i, /\bcomo eu (te )?(disse|falei)\b/i]],
+  ["di_resistencia", [/n[ãa]o vou (dar|te dar) (nenhum )?(posicionamento|resposta|retorno)/i, /n[ãa]o (vou|consigo) decidir (hoje|agora|na hora)/i, /n[ãa]o tomo decis[ãa]o (na hora|assim|hoje|agora)/i, /n[ãa]o (fecho|assino|decido) (nada )?(na primeira|hoje|agora|no impulso)/i]],
+  ["di_comparacao", [/\b(outras|outra) (escolas?|op[çc][õo]es|cursos?)\b/i, /\b(comparar|compara[çc][ãa]o|comparativo|pesquisar|or[çc]ar)\b/i, /colocar (tudo )?no papel/i]],
+  ["di_criterios", [/\b(preciso|quero|gostaria de) (entender|saber|verificar|ver|analisar|conhecer)\b/i, /\b(depende|vai depender) (de|do|da)\b/i]],
+  ["di_estabelecida", [/\b(te dou|dou) (um|o) (retorno|posicionamento|sim ou n[ãa]o)\b/i]],
+];
+
+const DI_FALLBACKS = {
+  di_resistencia: { rotulo: "RESISTÊNCIA À D.I.", nivel: "alerta", orientacao: "Descubra por que ele não se posiciona no final.", etapa: "di" },
+  di_criterios: { rotulo: "CRITÉRIOS DA DECISÃO", nivel: "atencao", orientacao: "Amarre esses pontos ao posicionamento final.", etapa: "di" },
+  di_comparacao: { rotulo: "COMPARAÇÃO", nivel: "aviso", orientacao: "Teste a consequência disso para a decisão.", etapa: "di" },
+  di_pede_apresentacao: { rotulo: "PEDE A APRESENTAÇÃO", nivel: "positivo", orientacao: "Pare de investigar. Alinhe a D.I. e avance.", etapa: "di" },
+  di_estabelecida: { rotulo: "D.I. ESTABELECIDA", nivel: "positivo", orientacao: "Confirme em uma frase e siga a call.", etapa: "di" },
+};
+
+const CRITICOS_SEMPRE = new Set(["fechou", "intencao_compra"]);
+
+function matchRules(text, rules, fallbacks) {
+  for (const [tipo, patterns] of rules) {
+    for (const p of patterns) if (p.test(text)) return { tipo, ...fallbacks[tipo] };
   }
   return null;
 }
+
+function detect(text, etapa) {
+  if (etapa === "di") {
+    const critico = matchRules(text, RULES, FALLBACKS);
+    if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
+    return matchRules(text, DI_RULES, DI_FALLBACKS);
+  }
+  return matchRules(text, RULES, FALLBACKS);
+}
+
 
 /* ---------- WAV ---------- */
 
@@ -188,7 +222,7 @@ async function sendPartial(chunks, turnId) {
     // A parcial só vale para o turno que a originou.
     if (!text || !speaking || turnId !== currentTurnId) return;
 
-    const quick = detect(text);
+    const quick = detect(text, etapaManual);
     if (quick && quick.tipo !== preAlertTipo) {
       preAlertTipo = quick.tipo;
       preAlertAt = performance.now();
@@ -258,7 +292,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
 
   // Camada 1 — card imediato (regra local), se ainda não apareceu na parcial
   const classStart = performance.now();
-  const quick = detect(text);
+  const quick = detect(text, etapaManual);
   timing.classificacao = Math.round(performance.now() - classStart);
   if (quick && quick.tipo !== alertadoAntes) {
     if (timing.primeiroAlerta == null) timing.primeiroAlerta = t();
@@ -293,6 +327,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
         etapa: etapaManual,
         etapaManual,
         memoria,
+        sugestoesAnteriores: [...sugestoesAnteriores],
       }),
     });
 
@@ -319,6 +354,16 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
 
       })
       .catch(() => {});
+    if (card.diStatus) {
+      memoria.diStatus = card.diStatus;
+      chrome.runtime
+        .sendMessage({ type: "COPILOT_MEMORY", memoria, alterados: ["diStatus"], at: Date.now(), etapa: etapaManual })
+        .catch(() => {});
+    }
+    if (card.frase) {
+      sugestoesAnteriores.push(card.frase);
+      while (sugestoesAnteriores.length > 3) sugestoesAnteriores.shift();
+    }
     if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;

@@ -3,7 +3,13 @@ import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
 import { camposPreenchidos, memoriaParaPrompt, normalizarMemoria } from "@/lib/memoria";
-import { CLASSIFY_SYSTEM, COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
+import {
+  CLASSIFY_SYSTEM,
+  COACH_SYSTEM,
+  DI_CLASSIFY_SYSTEM,
+  DI_COACH_EXTRA,
+  RULE_SNIPPETS,
+} from "@/lib/playbook";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +30,8 @@ const Body = z.object({
   etapaManual: z.string().optional(),
   /** Memória viva da call (estado resumido, nunca a transcrição inteira). */
   memoria: z.unknown().optional(),
+  /** Últimas frases já sugeridas ao vendedor — prevenção de loop. */
+  sugestoesAnteriores: z.array(z.string().max(240)).max(5).optional(),
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
@@ -45,7 +53,19 @@ const PROCESSO = new Set<string>([
   "pedido_decisao",
 ]);
 
-/** Threshold alto para objeções/compra; moderado para aprofundamento de SPIN. */
+/** Tipos próprios da etapa D.I. */
+const DI_TIPOS = new Set<string>([
+  "di_resistencia",
+  "di_criterios",
+  "di_comparacao",
+  "di_pede_apresentacao",
+  "di_estabelecida",
+]);
+
+/** Sinais críticos que interrompem qualquer etapa. */
+const CRITICOS_SEMPRE = new Set<string>(["fechou", "intencao_compra"]);
+
+/** Threshold alto para objeções/compra; moderado para aprofundamento de SPIN e D.I. */
 const CRITICOS = new Set<string>([
   "fechou",
   "intencao_compra",
@@ -55,7 +75,8 @@ const CRITICOS = new Set<string>([
   "tempo",
   "metodologia",
 ]);
-const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : 0.65);
+const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : DI_TIPOS.has(tipo) ? 0.6 : 0.65);
+
 
 
 /** Frase em uma linha, sem aspas, sem rótulo, curta. */
@@ -105,19 +126,20 @@ export const Route = createFileRoute("/api/public/coach")({
           return Response.json({ error: "Payload inválido." }, { status: 400, headers: CORS });
         }
 
-        const last = parsed.turns[parsed.turns.length - 1];
-        const quick = last ? detect(last.text) : null;
-
-        const transcript = parsed.turns
-          .slice(-4)
-          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
-          .join("\n");
-
         // Etapa manual do vendedor = fonte da verdade. A IA nunca a substitui.
         const etapaManual =
           parsed.etapaManual && (ETAPAS as readonly string[]).includes(parsed.etapaManual)
             ? parsed.etapaManual
             : undefined;
+        const isDI = etapaManual === "di";
+
+        const last = parsed.turns[parsed.turns.length - 1];
+        const quick = last ? detect(last.text, etapaManual) : null;
+
+        const transcript = parsed.turns
+          .slice(-4)
+          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
+          .join("\n");
 
         const memoria = normalizarMemoria(parsed.memoria);
         const memoriaTexto = memoriaParaPrompt(memoria);
@@ -126,6 +148,13 @@ export const Route = createFileRoute("/api/public/coach")({
           ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
           : "";
         const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
+        const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
+        const blocoSugestoes = sugestoes.length
+          ? `\n\nFRASES JÁ SUGERIDAS AO VENDEDOR (não repita nem reformule):\n${sugestoes
+              .map((s) => `- ${s}`)
+              .join("\n")}`
+          : "";
+
 
         const ms = () => Date.now() - started;
         const nada = (decisao: string, debug?: Record<string, unknown>) =>
@@ -142,14 +171,21 @@ export const Route = createFileRoute("/api/public/coach")({
 
         // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
         // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
-        const tipoCliente =
-          parsed.tipo && parsed.tipo in FALLBACKS && !PROCESSO.has(parsed.tipo)
-            ? parsed.tipo
-            : (quick && !PROCESSO.has(quick.tipo) ? quick.tipo : "nenhum");
+        // Na D.I. o assunto citado pelo cliente NÃO sequestra a etapa: só valem tipos da D.I. e sinais críticos.
+        const aceitaNaEtapa = (t?: string) =>
+          !!t && t in FALLBACKS && !PROCESSO.has(t) && (!isDI || DI_TIPOS.has(t) || CRITICOS_SEMPRE.has(t));
+        const tipoCliente = aceitaNaEtapa(parsed.tipo)
+          ? (parsed.tipo as string)
+          : aceitaNaEtapa(quick?.tipo)
+            ? (quick as { tipo: string }).tipo
+            : "nenhum";
+
         let tipo = tipoCliente as SignalType;
         let etapaIA: string | undefined;
         let orientacaoIA: string | undefined;
         let fraseIA = "";
+        let diStatusIA: string | undefined;
+
         let confianca = tipo === "nenhum" ? 0 : 0.9;
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
         const debug: Record<string, unknown> = {
@@ -167,15 +203,15 @@ export const Route = createFileRoute("/api/public/coach")({
           try {
             const res = await callAI(
               [
-                { role: "system", content: CLASSIFY_SYSTEM },
+                { role: "system", content: isDI ? DI_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
-
               ],
               key,
             );
+
             if (!res.ok) return nada(`AI_HTTP_${res.status}`, { ...debug, motivo_silencio: "falha na IA" });
             const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
             const raw = data.choices?.[0]?.message?.content ?? "";
@@ -208,8 +244,16 @@ export const Route = createFileRoute("/api/public/coach")({
                 sinal_baseado_em: "processo",
                 motivo_silencio: "alerta de processo sem evidência da fala do vendedor",
               });
+            if (isDI && !DI_TIPOS.has(t) && !CRITICOS_SEMPRE.has(t))
+              return nada("FORA_DA_ETAPA_DI", {
+                ...debug,
+                confianca,
+                tipoSugerido: t,
+                motivo_silencio: "assunto não estabelece a Regra do Jogo",
+              });
             if (!(t in FALLBACKS))
               return nada("PARSE_ERROR", { ...debug, tipoInvalido: t, motivo_silencio: "tipo inválido" });
+
             if (confianca < threshold(t))
               return nada("LOW_CONFIDENCE", {
                 ...debug,
@@ -227,6 +271,8 @@ export const Route = createFileRoute("/api/public/coach")({
             debug["sinal_baseado_em"] = "fala_cliente";
             debug["motivo_intervencao"] = motivoIA ?? `sinal do cliente: ${tipo}`;
             debug["confianca"] = confianca;
+            if (typeof obj["diStatus"] === "string") diStatusIA = obj["diStatus"] as string;
+
           } catch (e) {
             return nada("PARSE_ERROR", {
               ...debug,
@@ -245,6 +291,16 @@ export const Route = createFileRoute("/api/public/coach")({
           (etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa);
 
 
+        const DI_STATUS_POR_TIPO: Record<string, string> = {
+          di_resistencia: "resistencia",
+          di_criterios: "criterios_identificados",
+          di_comparacao: "resistencia_persistente",
+          di_pede_apresentacao: "apresentada",
+          di_estabelecida: "estabelecida",
+        };
+        const diStatus = isDI ? (diStatusIA ?? DI_STATUS_POR_TIPO[tipo] ?? null) : null;
+        if (isDI) debug["di_status"] = diStatus;
+
         const card = {
           tipo,
           etapa,
@@ -253,6 +309,7 @@ export const Route = createFileRoute("/api/public/coach")({
           orientacao: orientacaoIA?.trim() || base.orientacao,
           confianca,
           decisao,
+          diStatus,
           fonte: "ia" as const,
         };
 
@@ -273,17 +330,17 @@ export const Route = createFileRoute("/api/public/coach")({
         try {
           const res = await callAI(
             [
-              { role: "system", content: COACH_SYSTEM },
+              { role: "system", content: isDI ? `${COACH_SYSTEM}\n\n${DI_COACH_EXTRA}` : COACH_SYSTEM },
               {
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
               },
             ],
-
             key,
           );
+
 
           if (!res.ok) {
             return Response.json(

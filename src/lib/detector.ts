@@ -148,6 +148,56 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   },
 ];
 
+/**
+ * Regras que SÓ valem quando o vendedor marcou a etapa D.I.
+ * Na D.I. o objetivo é a Regra do Jogo, não o assunto citado pelo cliente.
+ */
+const DI_RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
+  {
+    tipo: "di_pede_apresentacao",
+    patterns: [
+      /\b(n[ãa]o sei|nem sei|n[ãa]o fa[çc]o ideia)\b.*\b(por isso|justamente|por causa disso)?/i,
+      /(me )?(apresent|mostr|explic)\w*\s+(como funciona|a proposta|o curso|voc[êe]s)/i,
+      /\bquero (conhecer|entender) (voc[êe]s|a proposta|o curso)\b/i,
+      /\bj[áa] (te )?(falei|disse|respondi)\b/i,
+      /\bcomo eu (te )?(disse|falei)\b/i,
+    ],
+  },
+  {
+    tipo: "di_resistencia",
+    patterns: [
+      /n[ãa]o vou (dar|te dar) (nenhum )?(posicionamento|resposta|retorno)/i,
+      /n[ãa]o (vou|consigo) decidir (hoje|agora|na hora)/i,
+      /n[ãa]o tomo decis[ãa]o (na hora|assim|hoje|agora)/i,
+      /n[ãa]o (fecho|assino|decido) (nada )?(na primeira|hoje|agora|no impulso)/i,
+      /prefiro pensar depois/i,
+    ],
+  },
+  {
+    tipo: "di_comparacao",
+    patterns: [
+      /\b(outras|outra) (escolas?|op[çc][õo]es|cursos?)\b/i,
+      /\b(comparar|compara[çc][ãa]o|comparativo|pesquisar|or[çc]ar)\b/i,
+      /colocar (tudo )?no papel/i,
+    ],
+  },
+  {
+    tipo: "di_criterios",
+    patterns: [
+      /\b(preciso|quero|gostaria de) (entender|saber|verificar|ver|analisar|conhecer)\b/i,
+      /\b(depende|vai depender) (de|do|da)\b/i,
+    ],
+  },
+  {
+    tipo: "di_estabelecida",
+    patterns: [
+      /\b(pode ser|combinado|tudo bem|sem problema|claro)\b.*\b(final|fim|depois)\b/i,
+      /\b(te dou|dou) (um|o) (retorno|posicionamento|sim ou n[ãa]o)\b/i,
+    ],
+  },
+];
+
+
 export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo">> = {
   rapport_longo: {
     rotulo: "RAPPORT LONGO",
@@ -161,6 +211,41 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
     orientacao: "Alinhe o posicionamento ao final antes de aprofundar.",
     frase: "Ao final da nossa conversa, você me diz se faz sentido ou não, tudo bem?",
     nivel: "atencao",
+    etapa: "di",
+  },
+  di_resistencia: {
+    rotulo: "RESISTÊNCIA À D.I.",
+    orientacao: "Descubra por que ele não se posiciona no final.",
+    frase: "O que te impediria de me dar um sim ou não depois de conhecer tudo?",
+    nivel: "alerta",
+    etapa: "di",
+  },
+  di_criterios: {
+    rotulo: "CRITÉRIOS DA DECISÃO",
+    orientacao: "Amarre esses pontos ao posicionamento final.",
+    frase: "Se a gente validar esses pontos aqui, você consegue me dar um posicionamento no final?",
+    nivel: "aviso",
+    etapa: "di",
+  },
+  di_comparacao: {
+    rotulo: "QUER COMPARAR",
+    orientacao: "Entenda o efeito disso na decisão, não fale de método.",
+    frase: "O que você precisaria comparar depois que não daria pra validar comigo aqui?",
+    nivel: "aviso",
+    etapa: "di",
+  },
+  di_pede_apresentacao: {
+    rotulo: "PARE DE INVESTIGAR",
+    orientacao: "Ele não tem a resposta. Alinhe a D.I. e avance.",
+    frase: "Perfeito. Conhece tudo primeiro e no final você me diz se fez sentido. Combinado?",
+    nivel: "aviso",
+    etapa: "di",
+  },
+  di_estabelecida: {
+    rotulo: "D.I. ESTABELECIDA",
+    orientacao: "Avance. Não prolongue a Regra do Jogo.",
+    frase: "",
+    nivel: "positivo",
     etapa: "di",
   },
   aprofunde_objetivo: {
@@ -292,15 +377,29 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
   },
 };
 
-export function detect(text: string): Signal | null {
+/** Sinais críticos que interrompem qualquer etapa. */
+const CRITICOS_SEMPRE = new Set<SignalType>(["fechou", "intencao_compra"]);
+
+/**
+ * Camada 1. Quando a etapa manual é "di", a Regra do Jogo tem prioridade:
+ * assunto (metodologia, tempo, preço) não sequestra a etapa.
+ */
+export function detect(text: string, etapa?: string): Signal | null {
   if (!text || text.trim().length < 3) return null;
-  for (const rule of RULES) {
-    for (const p of rule.patterns) {
-      if (p.test(text)) {
-        const f = FALLBACKS[rule.tipo as Exclude<SignalType, "nenhum">];
-        return { tipo: rule.tipo, ...f };
+  const match = (rules: typeof RULES): Signal | null => {
+    for (const rule of rules) {
+      for (const p of rule.patterns) {
+        if (p.test(text)) return { tipo: rule.tipo, ...FALLBACKS[rule.tipo as Exclude<SignalType, "nenhum">] };
       }
     }
+    return null;
+  };
+
+  if (etapa === "di") {
+    const critico = match(RULES);
+    if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
+    return match(DI_RULES);
   }
-  return null;
+  return match(RULES);
 }
+

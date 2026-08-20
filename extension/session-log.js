@@ -16,6 +16,9 @@ const MEM_FIELDS = [
   "objecoes",
   "sinaisCompra",
   "informacoesImportantes",
+  "diStatus",
+  "diMotivoResistencia",
+  "diCriteriosParaDecidir",
 ];
 
 function memSnapshot(memoria) {
