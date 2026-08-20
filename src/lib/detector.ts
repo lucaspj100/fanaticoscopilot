@@ -84,14 +84,20 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   {
     tipo: "financeiro",
     patterns: [
-      // "valores" no plural costuma aparecer como CRITÉRIO ("horário, método e valores"),
-      // não como objeção financeira — por isso só "valor" no singular dispara.
-      /\b(caro|pre[çc]o|valor(?!es)|invest|or[çc]ament|dinheiro|grana|condi[çc]|desconto|parcel|boleto|financiament)\w*/i,
-      /n[ãa]o tenho (esse|como|dinheiro|verba)/i,
-      /fora do meu (or[çc]amento|budget)/i,
-      /cabe no bolso/i,
+      // Citar "investimento", "valor" ou "preço" NÃO é objeção. Só dispara com
+      // resistência explícita: recusa, comparação de custo alto ou pedido de desconto.
+      /\b(muito |bem |t[áa] |est[áa] |ficou |achei )?caro\b/i,
+      /\b(salgado|pesad[oa]|apertado|fora da minha realidade)\b/i,
+      /n[ãa]o (tenho|teria|tenho como|consigo) (esse |o )?(valor|dinheiro|verba|condi[çc][ãa]o|grana)/i,
+      /n[ãa]o (tenho|d[áa]) (pra|para) pagar/i,
+      /fora do (meu )?(or[çc]amento|budget|alcance)/i,
+      /n[ãa]o cabe no (meu )?(bolso|or[çc]amento)/i,
+      /\b(desconto|abatimento|um precinho|melhora(r)? o valor)\b/i,
+      /(valor|pre[çc]o|mensalidade|investimento)\b[^.]{0,40}\b(alto|elevado|acima|puxad[oa]|caro)\b/i,
+      /\b(t[áa]|est[áa]|ficou) (bem |muito )?(acima|alto|puxado)\b/i,
     ],
   },
+
   {
     tipo: "segunda_opiniao",
     patterns: [
