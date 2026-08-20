@@ -82,6 +82,7 @@ export function reduceCard(ctx, card, turnIdRaw, now = Date.now()) {
 
   if (
     atual &&
+    atual.completedAt != null &&
     card.recommendationSequence != null &&
     atual.recommendationSequence != null &&
     card.recommendationSequence < atual.recommendationSequence
@@ -117,7 +118,7 @@ export function reduceCard(ctx, card, turnIdRaw, now = Date.now()) {
     id: mesmaRec ? atual.id : `rec_${turnId}_${seq}`,
     turnId,
     sourceTurnId: turnId,
-    recommendationSequence: merged.recommendationSequence ?? seq,
+    recommendationSequence: merged.recommendationSequence ?? null,
     status,
     preliminaryText: mesmaRec ? atual.preliminaryText ?? atual.orientacao : card.orientacao,
     createdAt: mesmaRec ? atual.createdAt : now,
@@ -204,15 +205,16 @@ export function reduceTimeout(ctx, now = Date.now(), limite = GENERATING_TIMEOUT
  * recomendação que ainda está sendo finalizada — só turnos com conteúdo real.
  */
 export function reduceNovoTurno(ctx, turnId, texto = "", now = Date.now()) {
-  const latest = Math.max(ctx.latestCommittedTurnId, turnId);
-  let next = { ...ctx, latestCommittedTurnId: latest };
-  if (turnId <= (ctx.state.turnId || 0)) return { ctx: next, changed: false, log: null };
+  let next = { ...ctx };
+  if (turnId <= (ctx.state.turnId || 0)) {
+    return { ctx: { ...next, latestCommittedTurnId: Math.max(ctx.latestCommittedTurnId, turnId) }, changed: false, log: null };
+  }
 
   const rec = ctx.state.rec;
   const gerando = ctx.state.kind === "card" && rec && rec.status === "generating";
   const fragmento = contaPalavras(texto) <= 4;
   if (gerando && fragmento && now - (rec.createdAt || 0) < GENERATING_TIMEOUT_MS) {
-    // mantém o card em geração; ele ainda pode ser completado
+    // mantém o card em geração (e o turno anterior válido); ainda pode ser completado
     return {
       ctx: next,
       changed: false,
@@ -230,6 +232,7 @@ export function reduceNovoTurno(ctx, turnId, texto = "", now = Date.now()) {
   const seq = next.seq + 1;
   next = {
     ...next,
+    latestCommittedTurnId: Math.max(ctx.latestCommittedTurnId, turnId),
     seq,
     state: { kind: "analisando", texto: "Analisando…", rec: null, sequence: seq, turnId },
   };
