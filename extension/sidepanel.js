@@ -98,6 +98,33 @@ function renderDecision(d) {
   );
 }
 
+/* ---------- modo de exibição: sidepanel · compacto · ambos ---------- */
+
+let overlayMode = "sidepanel";
+
+function paintModes() {
+  document.querySelectorAll(".mode").forEach((b) => b.classList.toggle("active", b.dataset.mode === overlayMode));
+}
+
+async function applyMode(mode, { announce } = {}) {
+  overlayMode = mode;
+  paintModes();
+  chrome.storage.local.set({ overlayMode: mode });
+  const res = await chrome.runtime.sendMessage({
+    type: "COPILOT_OVERLAY_MODE",
+    enabled: mode === "compacto" || mode === "ambos",
+  });
+  if (announce && res && !res.ok) els.status.textContent = `⚠ ${res.error}`;
+}
+
+chrome.storage.local.get(["overlayMode"]).then(({ overlayMode: m }) => {
+  overlayMode = m || "sidepanel";
+  paintModes();
+});
+document.querySelectorAll(".mode").forEach((b) =>
+  b.addEventListener("click", () => applyMode(b.dataset.mode, { announce: true })),
+);
+
 let running = false;
 
 chrome.storage.local.get(["endpoint"]).then(({ endpoint }) => {
