@@ -187,11 +187,30 @@
   };
   window.__unitedCopilotOverlay = api;
 
+  const ETAPA_LABEL = {
+    rapport: "RAPPORT",
+    di: "DECISÃO IMEDIATA",
+    spin: "SPIN",
+    apresentacao: "APRESENTAÇÃO",
+    gatilho: "GATILHO",
+    fechamento: "FECHAMENTO",
+  };
+  function setEtapa(etapa) {
+    const el = $("etapa");
+    if (el && ETAPA_LABEL[etapa]) el.textContent = ETAPA_LABEL[etapa];
+  }
+  chrome.storage?.local?.get(["etapaAtual"]).then(({ etapaAtual }) => setEtapa(etapaAtual || "rapport")).catch(() => {});
+
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === "COPILOT_CARD") api.onCard(msg.card);
+    if (msg?.type === "COPILOT_CARD") {
+      api.onCard(msg.card);
+      if (msg.card?.etapa) setEtapa(msg.card.etapa);
+    }
+    if (msg?.type === "COPILOT_ETAPA") setEtapa(msg.etapa);
     if (msg?.type === "COPILOT_OVERLAY_HIDE") api.hide();
     if (msg?.type === "COPILOT_OVERLAY_SHOW") api.show();
   });
+
 
   api.show();
 })();
