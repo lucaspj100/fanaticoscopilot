@@ -185,11 +185,25 @@ const SPIN_FALLBACKS = {
 
 const OBJECOES_REAIS = new Set(["financeiro", "pensar", "segunda_opiniao", "tempo"]);
 
-/** SPIN suficiente = objetivo + problema + ao menos uma implicação. */
+/** Minimização da dor: o cliente diminui o problema — nunca encerrar o SPIN aqui. */
+const MINIMIZACAO_RE = /\b(n[ãa]o ligo (tanto|muito)|n[ãa]o me (incomoda|atrapalha) (tanto|muito)|pra mim (é|e) tranquilo|n[ãa]o (é|e) t[ãa]o importante|n[ãa]o tenho (tanta )?pressa|sem pressa|n[ãa]o chega a ser um problema|n[ãa]o faz tanta diferen[çc]a|tanto faz)\b/i;
+
+/**
+ * V2.7 — SPIN suficiente exige MATERIAL COMERCIAL, não campos preenchidos:
+ * problema + impacto concreto + necessidade percebida (ou urgência/gatilho + intenção).
+ */
 function spinSuficiente(m) {
-  const impl = (m.spinImplicacoes && m.spinImplicacoes.length ? m.spinImplicacoes : m.implicacao ? [m.implicacao] : []);
-  return !!(m.spinObjetivo || m.objetivo) && !!(m.spinProblema || m.problema) && impl.length > 0;
+  const mapa = (m && m.mapa) || {};
+  const alto = (k) => mapa[k] && mapa[k].estado === "respondido" && (mapa[k].profundidade || "baixa") !== "baixa";
+  if (mapa.minimizacao && mapa.minimizacao.estado === "respondido" && !alto("impacto")) return false;
+  const problema = alto("problema") || !!(m.spinProblema || m.problema);
+  const impacto = alto("impacto") || alto("oportunidade_perdida");
+  const necessidade = alto("necessidade") || !!(m.spinNecessidade || m.necessidade);
+  const urgencia = alto("urgencia") || alto("gatilho_agora");
+  const intencao = alto("sinais_compra") || alto("gatilho_agora");
+  return (problema && impacto && necessidade) || (problema && urgencia && intencao);
 }
+
 
 const CRITICOS_SEMPRE = new Set(["fechou", "intencao_compra"]);
 
@@ -209,12 +223,21 @@ function detect(text, etapa) {
   if (etapa === "spin") {
     const critico = matchRules(text, RULES, FALLBACKS);
     if (critico && (CRITICOS_SEMPRE.has(critico.tipo) || OBJECOES_REAIS.has(critico.tipo))) return critico;
+    // Cliente minimizou a dor: nunca encerrar o SPIN — aprofundar a implicação.
+    if (MINIMIZACAO_RE.test(text)) {
+      return {
+        tipo: "spin_implicacao",
+        ...SPIN_FALLBACKS.spin_implicacao,
+        orientacao: "Ele minimizou. Peça um exemplo concreto e recente.",
+      };
+    }
     const sinal = matchRules(text, SPIN_RULES, SPIN_FALLBACKS);
     if (sinal && spinSuficiente(memoria) && sinal.tipo !== "spin_suficiente") {
       return { tipo: "spin_suficiente", ...SPIN_FALLBACKS.spin_suficiente };
     }
     return sinal;
   }
+
   return matchRules(text, RULES, FALLBACKS);
 }
 

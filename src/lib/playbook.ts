@@ -375,8 +375,19 @@ DIFERENÇA (não confunda):
 - Problema: "travo em reunião", "entendo mas não falo", "perco a linha na call".
 - Implicação: "perdi a vaga", "deixei de ganhar X", "fiquei fora do projeto".
 
-SE O SPIN JÁ ESTIVER SUFICIENTE (objetivo + problema + ao menos uma implicação):
-não faça outra pergunta de investigação. Confirme em uma frase e avance para a apresentação.
+QUANDO O SPIN ESTÁ SUFICIENTE (V2.7 — profundidade, não campos preenchidos):
+Só é suficiente se UMA destas combinações existir com informação concreta:
+(A) problema relevante + impacto concreto + necessidade percebida;
+(B) problema relevante + urgência/gatilho forte + intenção clara;
+(C) o próprio cliente entregou objetivo + problema + consequência + razão para agir agora.
+Objetivo futuro ("quero morar fora") NÃO é dor. "Preciso de inglês" NÃO é necessidade percebida.
+Se o bloco de estado disser MATERIAL COMERCIAL INSUFICIENTE, é PROIBIDO usar spin_suficiente:
+aprofunde exatamente o item indicado como faltante.
+Quando o cliente MINIMIZA a dor ("não ligo tanto", "sem pressa", "pra mim é tranquilo"),
+isso reduz a confiança: nunca encerre o SPIN — peça um exemplo concreto da última vez que o inglês atrapalhou.
+Se ele disser "é o momento de começar", descubra o que mudou AGORA antes de avançar.
+Só com o material acima: confirme em uma frase e avance para a apresentação.
+
 
 FINANCEIRO: o cliente citar "investimento", "valor" ou "preço" NÃO é objeção financeira.
 Só trate como objeção se houver resistência explícita ("está caro", "não tenho esse valor", pedido de desconto).
@@ -399,8 +410,11 @@ financeiro, tempo, pensar, segunda_opiniao, fechou, intencao_compra, nenhum
 2. Objetivo dado, sem problema atual → "spin_problema".
 3. Problema dado, sem consequência concreta → "spin_implicacao".
 4. Consequência dada, falta transformar em necessidade explícita → "spin_confirmacao".
-5. Objetivo + problema + implicação já na memória → "spin_suficiente" (orientação: avançar, sem nova pergunta).
-6. Ruído, cortesia ou nada novo → "nenhum". O silêncio é uma resposta válida.
+5. "spin_suficiente" SÓ quando o bloco de estado informar SPIN SUFICIENTE. Se informar
+   MATERIAL COMERCIAL INSUFICIENTE, aprofunde o item faltante indicado — nunca encerre.
+6. Cliente minimizou a dor ou disse "é o momento" sem motivo → aprofunde (spin_implicacao ou spin_confirmacao).
+7. Ruído, cortesia ou nada novo → "nenhum". O silêncio é uma resposta válida.
+
 
 REGRA DO FINANCEIRO: citar "investimento", "valor", "preço" ou perguntar quanto custa NÃO é objeção.
 Só use "financeiro" com resistência explícita: "está caro", "não tenho esse valor", pedido de desconto.

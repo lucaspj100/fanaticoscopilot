@@ -10,7 +10,7 @@ import {
   mapaDaMemoria,
   memoriaParaPrompt,
   normalizarMemoria,
-  spinSuficiente,
+  avaliacaoSpin,
 } from "@/lib/memoria";
 import {
   CLASSIFY_SYSTEM,
@@ -174,16 +174,26 @@ export const Route = createFileRoute("/api/public/coach")({
         const memoria = normalizarMemoria(parsed.memoria);
         const memoriaTexto = memoriaParaPrompt(memoria);
         const camposMemoria = camposPreenchidos(memoria);
-        const spinPronto = spinSuficiente(memoria);
+        const avSpin = avaliacaoSpin(memoria);
+        const spinPronto = avSpin.suficiente;
         const blocoContexto = memoriaTexto
           ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
           : "";
         const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
         const blocoSpin = isSpin
           ? `\nESTADO DO SPIN: ${derivarSpinStatus(memoria)}${
-              spinPronto ? " — SPIN SUFICIENTE: não investigue mais, confirme e avance." : ""
+              spinPronto
+                ? ` — SPIN SUFICIENTE (${avSpin.motivo}): não investigue mais, confirme e avance.`
+                : `\nMATERIAL COMERCIAL AINDA INSUFICIENTE: ${avSpin.motivo}.\nAPROFUNDE PRIMEIRO: ${
+                    avSpin.faltando.slice(0, 2).join(" e ") || "o impacto real"
+                  }.${
+                    avSpin.minimizou
+                      ? "\nATENÇÃO: o cliente MINIMIZOU a dor. Não confronte; peça um exemplo concreto da última vez que o inglês atrapalhou."
+                      : ""
+                  }`
             }`
           : "";
+
 
         // ---- Mapa vivo do cliente: o que já sabemos e o que ainda falta.
         const mapaTexto = mapaDaMemoria(memoria);
@@ -239,6 +249,13 @@ export const Route = createFileRoute("/api/public/coach")({
         if (isSpin && spinPronto && SPIN_TIPOS.has(tipoCliente) && tipoCliente !== "spin_suficiente") {
           tipoCliente = "spin_suficiente";
         }
+        // V2.7 — sem material comercial, "spin_suficiente" é proibido: aprofunde.
+        if (isSpin && !spinPronto && tipoCliente === "spin_suficiente") {
+          tipoCliente = avSpin.faltando.includes("necessidade / valor da mudança")
+            ? "spin_confirmacao"
+            : "spin_implicacao";
+        }
+
 
         let tipo = tipoCliente as SignalType;
         let etapaIA: string | undefined;
@@ -393,6 +410,11 @@ export const Route = createFileRoute("/api/public/coach")({
         if (isSpin) {
           debug["spin_status"] = spinStatus;
           debug["spin_suficiente"] = spinPronto;
+          debug["spin_condicao"] = avSpin.condicao;
+          debug["spin_motivo"] = avSpin.motivo;
+          debug["spin_faltando"] = avSpin.faltando;
+          debug["spin_minimizou"] = avSpin.minimizou;
+
           debug["spin_eixos_explorados"] = memoria.spinPerguntasJaExploradas;
         }
 
