@@ -390,6 +390,9 @@ async function start(streamId, ep) {
         lastPartialAt = now;
         preAlertTipo = null;
         preAlertAt = null;
+        // nova fala = novo turno
+        currentTurnId = ++turnSeq;
+        chrome.runtime.sendMessage({ type: "COPILOT_TURN_START", turnId: currentTurnId }).catch(() => {});
         log("falando");
       }
       lastVoiceAt = now;
@@ -407,7 +410,7 @@ async function start(streamId, ep) {
     // Streaming: manda o que já foi falado, sem esperar o fim da fala.
     if (speaking && !partialInFlight && now - lastPartialAt > PARTIAL_EVERY_MS && now - speechStartedAt > 900) {
       lastPartialAt = now;
-      sendPartial(buffer.slice());
+      sendPartial(buffer.slice(), currentTurnId);
     }
 
     if (speaking && now - speechStartedAt > MAX_TURN_MS) {
