@@ -447,7 +447,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
               },
             ],
             key,
@@ -469,7 +469,16 @@ export const Route = createFileRoute("/api/public/coach")({
           }
 
           const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-          const raw = clean(data.choices?.[0]?.message?.content ?? "");
+          const bruto = data.choices?.[0]?.message?.content ?? "";
+          const linhas = bruto
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+          const linhaFrase = linhas.find((l) => /^frase\s*:/i.test(l)) ?? linhas[0] ?? "";
+          const linhaPorque = linhas.find((l) => /^porqu[eê]\s*:/i.test(l)) ?? "";
+          const raw = clean(linhaFrase.replace(/^frase\s*:\s*/i, ""));
+          const porqueFinal =
+            porqueIA ?? (linhaPorque ? linhaPorque.replace(/^porqu[eê]\s*:\s*/i, "").slice(0, 180) : null);
           debug["fraseRaw"] = raw;
           // Saída truncada/vazia cai na frase do playbook.
           let frase = raw.length >= 12 ? raw : base.frase;
@@ -482,7 +491,7 @@ export const Route = createFileRoute("/api/public/coach")({
           }
 
           return Response.json(
-            { ...card, frase, ms: ms(), iaMs: Date.now() - upstreamStart, debug },
+            { ...card, frase, porque: porqueFinal, ms: ms(), iaMs: Date.now() - upstreamStart, debug },
             { headers: CORS },
           );
         } catch (e) {
