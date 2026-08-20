@@ -239,8 +239,11 @@ export const Route = createFileRoute("/api/public/coach")({
 
         const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
         const etapaBruta = parsed.etapa ?? etapaIA;
+        // A etapa manual do vendedor prevalece sobre qualquer inferência.
         const etapa =
-          etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa;
+          etapaManual ??
+          (etapaBruta && (ETAPAS as readonly string[]).includes(etapaBruta) ? etapaBruta : base.etapa);
+
 
         const card = {
           tipo,
