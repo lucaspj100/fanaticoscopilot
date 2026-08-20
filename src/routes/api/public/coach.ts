@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
+import { camposPreenchidos, memoriaParaPrompt, normalizarMemoria } from "@/lib/memoria";
 import { CLASSIFY_SYSTEM, COACH_SYSTEM, RULE_SNIPPETS } from "@/lib/playbook";
 
 const CORS = {
@@ -19,10 +20,15 @@ const Body = z.object({
   // Situação já classificada pela camada 1 (opcional).
   tipo: z.string().optional(),
   etapa: z.string().optional(),
+  /** Etapa informada MANUALMENTE pelo vendedor — fonte da verdade. */
+  etapaManual: z.string().optional(),
+  /** Memória viva da call (estado resumido, nunca a transcrição inteira). */
+  memoria: z.unknown().optional(),
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
 const MODEL = "google/gemini-3.1-flash-lite";
+
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 /** Sinais que dependem da atuação do vendedor: bloqueados até haver speaker detection. */

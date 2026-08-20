@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicCoachRouteImport } from './routes/api/public/coach'
+import { Route as ApiPublicMemoryRouteImport } from './routes/api/public/memory'
 import { Route as ApiPublicTranscribeRouteImport } from './routes/api/public/transcribe'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const ApiPublicCoachRoute = ApiPublicCoachRouteImport.update({
   path: '/api/public/coach',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicMemoryRoute = ApiPublicMemoryRouteImport.update({
+  id: '/api/public/memory',
+  path: '/api/public/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTranscribeRoute = ApiPublicTranscribeRouteImport.update({
   id: '/api/public/transcribe',
   path: '/api/public/transcribe',
@@ -32,30 +38,41 @@ const ApiPublicTranscribeRoute = ApiPublicTranscribeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/coach': typeof ApiPublicCoachRoute
+  '/api/public/memory': typeof ApiPublicMemoryRoute
   '/api/public/transcribe': typeof ApiPublicTranscribeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/coach': typeof ApiPublicCoachRoute
+  '/api/public/memory': typeof ApiPublicMemoryRoute
   '/api/public/transcribe': typeof ApiPublicTranscribeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/public/coach': typeof ApiPublicCoachRoute
+  '/api/public/memory': typeof ApiPublicMemoryRoute
   '/api/public/transcribe': typeof ApiPublicTranscribeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/coach' | '/api/public/transcribe'
+  fullPaths:
+    '/' | '/api/public/coach' | '/api/public/memory' | '/api/public/transcribe'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/coach' | '/api/public/transcribe'
-  id: '__root__' | '/' | '/api/public/coach' | '/api/public/transcribe'
+  to:
+    '/' | '/api/public/coach' | '/api/public/memory' | '/api/public/transcribe'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/coach'
+    | '/api/public/memory'
+    | '/api/public/transcribe'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicCoachRoute: typeof ApiPublicCoachRoute
+  ApiPublicMemoryRoute: typeof ApiPublicMemoryRoute
   ApiPublicTranscribeRoute: typeof ApiPublicTranscribeRoute
 }
 
@@ -75,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCoachRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/memory': {
+      id: '/api/public/memory'
+      path: '/api/public/memory'
+      fullPath: '/api/public/memory'
+      preLoaderRoute: typeof ApiPublicMemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/transcribe': {
       id: '/api/public/transcribe'
       path: '/api/public/transcribe'
@@ -88,6 +112,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicCoachRoute: ApiPublicCoachRoute,
+  ApiPublicMemoryRoute: ApiPublicMemoryRoute,
   ApiPublicTranscribeRoute: ApiPublicTranscribeRoute,
 }
 export const routeTree = rootRouteImport
