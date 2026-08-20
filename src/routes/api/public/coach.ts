@@ -278,9 +278,10 @@ export const Route = createFileRoute("/api/public/coach")({
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }\n\nCONVERSA:\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
               },
             ],
+
             key,
           );
 
