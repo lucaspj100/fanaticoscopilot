@@ -74,6 +74,7 @@ function resetSessao() {
   memoriaAt = null;
   memoriaInFlight = false;
   sugestoesAnteriores = [];
+  memoriaFila.length = 0;
   preAlertTipo = null;
   preAlertAt = null;
   turnSeq = 0;
