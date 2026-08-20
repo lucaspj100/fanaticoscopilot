@@ -25,7 +25,21 @@ const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"
 const MODEL = "google/gemini-3.1-flash-lite";
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-/** Threshold maior para eventos críticos; moderado para aprofundamento de SPIN. */
+/** Sinais que dependem da atuação do vendedor: bloqueados até haver speaker detection. */
+const PROCESSO = new Set<string>([
+  "rapport_longo",
+  "di_ausente",
+  "falta_implicacao",
+  "criterio_compra",
+  "personalize",
+  "quatro_fatores",
+  "validar_solucao",
+  "isolar_financeiro",
+  "nao_negocie",
+  "pedido_decisao",
+]);
+
+/** Threshold alto para objeções/compra; moderado para aprofundamento de SPIN. */
 const CRITICOS = new Set<string>([
   "fechou",
   "intencao_compra",
@@ -33,11 +47,10 @@ const CRITICOS = new Set<string>([
   "pensar",
   "segunda_opiniao",
   "tempo",
-  "nao_negocie",
-  "pedido_decisao",
-  "isolar_financeiro",
+  "metodologia",
 ]);
-const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.7 : 0.45);
+const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : 0.65);
+
 
 /** Frase em uma linha, sem aspas, sem rótulo, curta. */
 function clean(raw: string): string {
