@@ -197,14 +197,28 @@ const spinStatusVal = (v: unknown): SpinStatus | null => {
 };
 
 /**
- * SPIN suficiente = objetivo + problema + pelo menos uma implicação relevante.
- * A necessidade explícita é desejável, mas não obrigatória.
+ * V2.7 — o SPIN não termina por campos preenchidos, e sim por MATERIAL COMERCIAL.
+ * Espelhamos os campos clássicos no mapa (com profundidade estimada) e deixamos
+ * a decisão para avaliarSpin: profundidade real de problema, impacto,
+ * necessidade e urgência, com minimização da dor derrubando a confiança.
  */
+export function avaliacaoSpin(m: Memoria): AvaliacaoSpin {
+  const base = m.mapa ?? novoMapa();
+  const espelho: Record<string, { estado: "respondido"; valor: string }> = {};
+  const por = (chave: string, valor: string | null | undefined) => {
+    if (valor && (base as Record<string, Slot>)[chave]?.estado !== "respondido")
+      espelho[chave] = { estado: "respondido", valor };
+  };
+  por("objetivo", m.spinObjetivo ?? m.objetivo);
+  por("problema", m.spinProblema ?? m.problema);
+  por("impacto", m.spinImplicacoes.find(ehImplicacaoValida) ?? m.implicacao);
+  por("necessidade", m.spinNecessidade ?? m.necessidade);
+  const mapa = Object.keys(espelho).length ? aplicarPatchMapa(base, espelho).mapa : base;
+  return avaliarSpin(mapa);
+}
+
 export function spinSuficiente(m: Memoria): boolean {
-  const objetivo = m.spinObjetivo ?? m.objetivo;
-  const problema = m.spinProblema ?? m.problema;
-  const implicacoes = m.spinImplicacoes.length ? m.spinImplicacoes : m.implicacao ? [m.implicacao] : [];
-  return !!objetivo && !!problema && implicacoes.some(ehImplicacaoValida);
+  return avaliacaoSpin(m).suficiente;
 }
 
 /** Estado do SPIN derivado dos campos — a IA nunca pode inventar um estado maior. */
@@ -217,6 +231,7 @@ export function derivarSpinStatus(m: Memoria): SpinStatus {
   if (m.spinObjetivo ?? m.objetivo) return "objetivo_identificado";
   return "nao_iniciado";
 }
+
 
 /** Normaliza qualquer objeto vindo do cliente/IA para o formato da memória. */
 export function normalizarMemoria(input: unknown): Memoria {
