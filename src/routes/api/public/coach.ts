@@ -71,6 +71,18 @@ const DI_TIPOS = new Set<string>([
   "di_estabelecida",
 ]);
 
+/** Tipos próprios da etapa SPIN. */
+const SPIN_TIPOS = new Set<string>([
+  "spin_objetivo",
+  "spin_problema",
+  "spin_implicacao",
+  "spin_confirmacao",
+  "spin_suficiente",
+]);
+
+/** Objeções reais que podem interromper o SPIN. */
+const OBJECOES_REAIS = new Set<string>(["financeiro", "pensar", "segunda_opiniao", "tempo"]);
+
 /** Sinais críticos que interrompem qualquer etapa. */
 const CRITICOS_SEMPRE = new Set<string>(["fechou", "intencao_compra"]);
 
@@ -84,7 +96,9 @@ const CRITICOS = new Set<string>([
   "tempo",
   "metodologia",
 ]);
-const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : DI_TIPOS.has(tipo) ? 0.6 : 0.65);
+const threshold = (tipo: string) =>
+  CRITICOS.has(tipo) ? 0.75 : DI_TIPOS.has(tipo) || SPIN_TIPOS.has(tipo) ? 0.6 : 0.65;
+
 
 
 
