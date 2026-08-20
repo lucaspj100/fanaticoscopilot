@@ -25,7 +25,21 @@ const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"
 const MODEL = "google/gemini-3.1-flash-lite";
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-/** Threshold maior para eventos críticos; moderado para aprofundamento de SPIN. */
+/** Sinais que dependem da atuação do vendedor: bloqueados até haver speaker detection. */
+const PROCESSO = new Set<string>([
+  "rapport_longo",
+  "di_ausente",
+  "falta_implicacao",
+  "criterio_compra",
+  "personalize",
+  "quatro_fatores",
+  "validar_solucao",
+  "isolar_financeiro",
+  "nao_negocie",
+  "pedido_decisao",
+]);
+
+/** Threshold alto para objeções/compra; moderado para aprofundamento de SPIN. */
 const CRITICOS = new Set<string>([
   "fechou",
   "intencao_compra",
@@ -33,11 +47,10 @@ const CRITICOS = new Set<string>([
   "pensar",
   "segunda_opiniao",
   "tempo",
-  "nao_negocie",
-  "pedido_decisao",
-  "isolar_financeiro",
+  "metodologia",
 ]);
-const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.7 : 0.45);
+const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : 0.65);
+
 
 /** Frase em uma linha, sem aspas, sem rótulo, curta. */
 function clean(raw: string): string {
@@ -99,19 +112,26 @@ export const Route = createFileRoute("/api/public/coach")({
           Response.json({ tipo: "nenhum", fonte: "ia", decisao, ms: ms(), debug }, { headers: CORS });
 
         // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
-        let tipo = (
-          parsed.tipo && parsed.tipo in FALLBACKS ? parsed.tipo : (quick?.tipo ?? "nenhum")
-        ) as SignalType;
+        // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
+        const tipoCliente =
+          parsed.tipo && parsed.tipo in FALLBACKS && !PROCESSO.has(parsed.tipo)
+            ? parsed.tipo
+            : (quick && !PROCESSO.has(quick.tipo) ? quick.tipo : "nenhum");
+        let tipo = tipoCliente as SignalType;
         let etapaIA: string | undefined;
         let orientacaoIA: string | undefined;
         let fraseIA = "";
         let confianca = tipo === "nenhum" ? 0 : 0.9;
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
-        const debug: Record<string, unknown> = { regraLocal: quick?.tipo ?? null };
+        const debug: Record<string, unknown> = {
+          regraLocal: quick?.tipo ?? null,
+          sinal_baseado_em: tipo === "nenhum" ? undefined : "regra_local",
+          motivo_intervencao: tipo === "nenhum" ? undefined : `regra local: ${tipo}`,
+        };
 
         // ---- Camada 1.5: nenhuma regra bateu -> a IA procura a próxima melhor ação.
         if (tipo === "nenhum") {
-          if (!key) return nada("AI_NAO_CONFIGURADA", debug);
+          if (!key) return nada("AI_NAO_CONFIGURADA", { ...debug, motivo_silencio: "IA não configurada" });
           try {
             const res = await callAI(
               [
@@ -120,37 +140,66 @@ export const Route = createFileRoute("/api/public/coach")({
               ],
               key,
             );
-            if (!res.ok) return nada(`AI_HTTP_${res.status}`, debug);
+            if (!res.ok) return nada(`AI_HTTP_${res.status}`, { ...debug, motivo_silencio: "falha na IA" });
             const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
             const raw = data.choices?.[0]?.message?.content ?? "";
             debug["classificadorRaw"] = raw.slice(0, 600);
-            if (!raw.trim()) return nada("AI_EMPTY_RESPONSE", debug);
+            if (!raw.trim()) return nada("AI_EMPTY_RESPONSE", { ...debug, motivo_silencio: "resposta vazia" });
 
             let obj: Record<string, unknown>;
             try {
               obj = extractJson(raw) as Record<string, unknown>;
             } catch {
-              return nada("INVALID_JSON", debug);
+              return nada("INVALID_JSON", { ...debug, motivo_silencio: "JSON inválido" });
             }
             debug["classificadorJson"] = obj;
+            const motivoIA = typeof obj["motivo"] === "string" ? (obj["motivo"] as string) : undefined;
 
             const t = String(obj["tipo"] ?? "nenhum");
             confianca = Number(obj["confianca"] ?? 0.6);
             if (!Number.isFinite(confianca)) confianca = 0.6;
-            if (t === "nenhum") return nada("NO_ACTION_NEEDED", { ...debug, confianca });
-            if (!(t in FALLBACKS)) return nada("PARSE_ERROR", { ...debug, tipoInvalido: t });
+            if (t === "nenhum")
+              return nada("NO_ACTION_NEEDED", {
+                ...debug,
+                confianca,
+                motivo_silencio: motivoIA ?? "sem próxima ação útil",
+              });
+            if (PROCESSO.has(t))
+              return nada("PROCESSO_BLOQUEADO", {
+                ...debug,
+                confianca,
+                tipoSugerido: t,
+                sinal_baseado_em: "processo",
+                motivo_silencio: "alerta de processo sem evidência da fala do vendedor",
+              });
+            if (!(t in FALLBACKS))
+              return nada("PARSE_ERROR", { ...debug, tipoInvalido: t, motivo_silencio: "tipo inválido" });
             if (confianca < threshold(t))
-              return nada("LOW_CONFIDENCE", { ...debug, tipoSugerido: t, confianca, minimo: threshold(t) });
+              return nada("LOW_CONFIDENCE", {
+                ...debug,
+                tipoSugerido: t,
+                confianca,
+                minimo: threshold(t),
+                motivo_silencio: "confiança insuficiente",
+              });
 
             tipo = t as SignalType;
             etapaIA = typeof obj["etapa"] === "string" ? (obj["etapa"] as string) : undefined;
             orientacaoIA = typeof obj["orientacao"] === "string" ? (obj["orientacao"] as string) : undefined;
             fraseIA = clean(String(obj["frase"] ?? ""));
             decisao = `${tipo.toUpperCase()}_IA`;
+            debug["sinal_baseado_em"] = "fala_cliente";
+            debug["motivo_intervencao"] = motivoIA ?? `sinal do cliente: ${tipo}`;
+            debug["confianca"] = confianca;
           } catch (e) {
-            return nada("PARSE_ERROR", { ...debug, erro: e instanceof Error ? e.message : String(e) });
+            return nada("PARSE_ERROR", {
+              ...debug,
+              erro: e instanceof Error ? e.message : String(e),
+              motivo_silencio: "erro no classificador",
+            });
           }
         }
+
 
         const base = FALLBACKS[tipo as Exclude<SignalType, "nenhum">];
         const etapaBruta = parsed.etapa ?? etapaIA;
