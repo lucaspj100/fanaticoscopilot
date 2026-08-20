@@ -368,10 +368,16 @@ els.toggle.addEventListener("click", async () => {
     return;
   }
   els.status.textContent = "Conectando à aba…";
+  // Nova sessão de call: zera cards e memória local.
+  els.cards.replaceChildren();
+  memoriaAt = null;
+  renderMemoria(null, []);
   const res = await chrome.runtime.sendMessage({
     type: "COPILOT_START",
     endpoint: els.endpoint.value.trim() || DEFAULT_ENDPOINT,
+    etapa: etapaAtual,
   });
+
   if (res?.ok) {
     setRunning(true);
     els.status.textContent = `COPILOTO ATIVO — OUVINDO · ${res.tabTitle}`;
