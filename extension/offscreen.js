@@ -54,12 +54,14 @@ let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
 let memoria = { ...MEMORIA_VAZIA };
 let memoriaAt = null;
 let memoriaInFlight = false;
+let sugestoesAnteriores = []; // últimas frases sugeridas — evita repetir pergunta
 
 function resetSessao() {
   turns.length = 0;
   memoria = { ...MEMORIA_VAZIA, etapaAtual: etapaManual };
   memoriaAt = null;
   memoriaInFlight = false;
+  sugestoesAnteriores = [];
   preAlertTipo = null;
   preAlertAt = null;
   turnSeq = 0;
@@ -217,7 +219,7 @@ async function sendPartial(chunks, turnId) {
     // A parcial só vale para o turno que a originou.
     if (!text || !speaking || turnId !== currentTurnId) return;
 
-    const quick = detect(text);
+    const quick = detect(text, etapaManual);
     if (quick && quick.tipo !== preAlertTipo) {
       preAlertTipo = quick.tipo;
       preAlertAt = performance.now();
@@ -287,7 +289,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
 
   // Camada 1 — card imediato (regra local), se ainda não apareceu na parcial
   const classStart = performance.now();
-  const quick = detect(text);
+  const quick = detect(text, etapaManual);
   timing.classificacao = Math.round(performance.now() - classStart);
   if (quick && quick.tipo !== alertadoAntes) {
     if (timing.primeiroAlerta == null) timing.primeiroAlerta = t();
@@ -322,6 +324,7 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
         etapa: etapaManual,
         etapaManual,
         memoria,
+        sugestoesAnteriores: [...sugestoesAnteriores],
       }),
     });
 
@@ -348,6 +351,16 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
 
       })
       .catch(() => {});
+    if (card.diStatus) {
+      memoria.diStatus = card.diStatus;
+      chrome.runtime
+        .sendMessage({ type: "COPILOT_MEMORY", memoria, alterados: ["diStatus"], at: Date.now(), etapa: etapaManual })
+        .catch(() => {});
+    }
+    if (card.frase) {
+      sugestoesAnteriores.push(card.frase);
+      while (sugestoesAnteriores.length > 3) sugestoesAnteriores.shift();
+    }
     if (card.tipo && card.tipo !== "nenhum") {
       timing.total = t();
       if (timing.primeiroAlerta == null) timing.primeiroAlerta = timing.total;
