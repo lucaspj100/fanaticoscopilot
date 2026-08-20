@@ -263,9 +263,12 @@ const ETAPA_LABEL = {
   fechamento: "Fechamento",
 };
 
-const HOLD_MS = 20000; // mantém a mesma situação na tela enquanto ela continua
+/* O card pertence a um TURNO de fala, nunca a uma janela de tempo.
+   A prioridade (GRUPO) só arbitra resultados concorrentes do MESMO turno. */
 
-let atual = null; // { card, el, at }
+let atual = null; // { card, el, turnId }
+let currentTurnId = 0;
+let ultimaTranscricao = null; // { turnId, text }
 
 function buildCard(card) {
   const el = document.createElement("article");
@@ -293,35 +296,78 @@ function fillCard(el, card) {
     const frase = el.querySelector(".frase");
     frase.textContent = `“${card.frase}”`;
     frase.onclick = () => navigator.clipboard.writeText(card.frase);
+  } else {
+    wrap.hidden = true;
   }
   el.querySelector(".meta").textContent =
     card.fonte === "ia" ? `frase da IA · ${card.ms ?? "?"} ms` : "alerta instantâneo · aguardando frase…";
 }
 
+function showEstado(texto, classe) {
+  const el = document.createElement("div");
+  el.className = `estado ${classe || ""}`;
+  el.textContent = texto;
+  els.cards.replaceChildren(el);
+}
+
+/** Novo turno: o card do turno anterior deixa de ser orientação válida. */
+function invalidarTurno(turnId) {
+  if (turnId <= currentTurnId && atual && atual.turnId === turnId) return;
+  currentTurnId = Math.max(currentTurnId, turnId);
+  atual = null;
+  showEstado("Analisando…", "analisando");
+  renderTurnoDiag();
+}
+
+function renderTurnoDiag() {
+  if (!els.turno) return;
+  const linhas = [
+    ["ÚLTIMO TURNO TRANSCRITO", ultimaTranscricao ? String(ultimaTranscricao.turnId) : "—"],
+    ["Texto", ultimaTranscricao?.text || "—"],
+    ["CARD ATUAL", atual ? `turnId ${atual.turnId} · ${atual.card.tipo}` : "nenhum"],
+  ];
+  els.turno.replaceChildren(
+    ...linhas.map(([label, value]) => {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = value;
+      li.append(label, b);
+      return li;
+    }),
+  );
+}
+
 function renderCard(card) {
   if (!card || card.tipo === "nenhum") return;
-  const agora = Date.now();
+  const turnId = card.turnId ?? currentTurnId;
+  // Card de turno já superado: descarta.
+  if (turnId < currentTurnId) return;
+  if (turnId > currentTurnId) {
+    currentTurnId = turnId;
+    atual = null;
+  }
 
-  // Mesma situação: atualiza o card no lugar (a IA só completa a frase).
-  if (atual && atual.card.tipo === card.tipo) {
+  // Mesmo turno + mesma situação: completa o card no lugar (a IA só traz a frase).
+  if (atual && atual.turnId === turnId && atual.card.tipo === card.tipo) {
     const merged = { ...atual.card, ...card, frase: card.frase || atual.card.frase };
     fillCard(atual.el, merged);
-    atual = { card: merged, el: atual.el, at: atual.at };
+    atual = { card: merged, el: atual.el, turnId };
+    renderTurnoDiag();
     return;
   }
 
-  if (atual) {
+  // Concorrência DENTRO do mesmo turno: só troca por algo mais importante.
+  if (atual && atual.turnId === turnId) {
     const novo = GRUPO[card.tipo] ?? 0;
     const velho = GRUPO[atual.card.tipo] ?? 0;
-    const antigo = agora - atual.at > HOLD_MS;
-    // Só troca por algo mais importante — ou quando o card já envelheceu.
-    if (novo <= velho && !antigo) return;
+    if (novo <= velho) return;
   }
 
   const el = buildCard(card);
   fillCard(el, card);
   els.cards.replaceChildren(el); // no máximo UMA situação visível
-  atual = { card, el, at: agora };
+  atual = { card, el, turnId };
+  renderTurnoDiag();
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -329,7 +375,17 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);
-  if (msg?.type === "COPILOT_DECISION") renderDecision(msg.decision);
+  if (msg?.type === "COPILOT_DECISION") {
+    renderDecision(msg.decision);
+    const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
+    const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
+    if (turnId >= currentTurnId && semAcao && (!atual || atual.turnId <= turnId)) {
+      atual = null;
+      currentTurnId = Math.max(currentTurnId, turnId);
+      showEstado("Sem intervenção agora.", "silencio");
+      renderTurnoDiag();
+    }
+  }
   if (msg?.type === "COPILOT_MEMORY") {
     memoriaAt = msg.at || null;
     renderMemoria(msg.memoria, msg.alterados || []);
@@ -340,8 +396,15 @@ chrome.runtime.onMessage.addListener((msg) => {
     els.status.textContent = msg.status === "erro" ? `⚠ ${msg.error}` : STATUS_TEXT[msg.status] || msg.status;
   }
   if (msg?.type === "COPILOT_TRANSCRIPT") {
+    const turnId = msg.turnId ?? currentTurnId;
+    // Transcrição COMPLETA de um turno novo encerra o card anterior na hora.
+    if (msg.final) {
+      ultimaTranscricao = { turnId, text: msg.text };
+      if (turnId > currentTurnId || (atual && atual.turnId < turnId)) invalidarTurno(turnId);
+      else renderTurnoDiag();
+    }
     const li = document.createElement("li");
-    li.textContent = `${msg.parcial ? "· " : ""}${msg.text}  (${msg.ms} ms)`;
+    li.textContent = `#${turnId} ${msg.parcial ? "· " : ""}${msg.text}  (${msg.ms} ms)`;
     els.transcript.prepend(li);
     while (els.transcript.children.length > 20) els.transcript.lastElementChild.remove();
   }

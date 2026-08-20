@@ -10,7 +10,7 @@
   }
 
   const POS_KEY = "overlayPos";
-  const HOLD_MS = 20000;
+  // O card pertence a um TURNO de fala. A prioridade só arbitra o MESMO turno.
   const GRUPO = {
     fechou: 5, intencao_compra: 5, pedido_decisao: 5,
     financeiro: 4, pensar: 4, segunda_opiniao: 4, tempo: 4, nao_negocie: 4, isolar_financeiro: 4,
