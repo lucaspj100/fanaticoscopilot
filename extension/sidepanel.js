@@ -380,10 +380,17 @@ chrome.runtime.onMessage.addListener((msg) => {
     ultimaTranscricao = null;
     renderTurnoDiag();
   }
-  if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
-  if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
+  if (msg?.type === "COPILOT_CARD") {
+    CopilotLog.card(msg.card);
+    renderCard(msg.card);
+  }
+  if (msg?.type === "COPILOT_TIMING") {
+    CopilotLog.latency(msg.timing, msg.turnId);
+    renderTiming(msg.timing);
+  }
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);
   if (msg?.type === "COPILOT_DECISION") {
+    CopilotLog.decision(msg.decision);
     renderDecision(msg.decision);
     const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
     const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
@@ -396,6 +403,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg?.type === "COPILOT_MEMORY") {
     memoriaAt = msg.at || null;
+    CopilotLog.memory(msg.memoria, msg.alterados || []);
     renderMemoria(msg.memoria, msg.alterados || []);
   }
   if (msg?.type === "COPILOT_ETAPA" && msg.from === "overlay") setEtapa(msg.etapa, { broadcast: false });
@@ -405,6 +413,8 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg?.type === "COPILOT_TRANSCRIPT") {
     const turnId = msg.turnId ?? currentTurnId;
+    // Histórico interno COMPLETO (a UI mostra só os últimos itens).
+    CopilotLog.transcript({ turnId, text: msg.text, parcial: !!msg.parcial, ms: msg.ms });
     // Transcrição COMPLETA de um turno novo encerra o card anterior na hora.
     if (msg.final) {
       ultimaTranscricao = { turnId, text: msg.text };
@@ -415,6 +425,34 @@ chrome.runtime.onMessage.addListener((msg) => {
     li.textContent = `#${turnId} ${msg.parcial ? "· " : ""}${msg.text}  (${msg.ms} ms)`;
     els.transcript.prepend(li);
     while (els.transcript.children.length > 20) els.transcript.lastElementChild.remove();
+  }
+});
+
+/* ---------- exportação do teste da call ---------- */
+
+const btnExport = document.getElementById("export-json");
+const btnCopy = document.getElementById("copy-diag");
+
+btnExport.addEventListener("click", () => {
+  if (!CopilotLog.sessionId) {
+    els.status.textContent = "⚠ Nenhuma sessão registrada ainda. Clique em Iniciar.";
+    return;
+  }
+  CopilotLog.download();
+  els.status.textContent = `Arquivo exportado: ${CopilotLog.fileName()}`;
+});
+
+btnCopy.addEventListener("click", async () => {
+  if (!CopilotLog.sessionId) {
+    els.status.textContent = "⚠ Nenhuma sessão registrada ainda. Clique em Iniciar.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(CopilotLog.toText());
+    btnCopy.textContent = "Copiado ✓";
+    setTimeout(() => (btnCopy.textContent = "Copiar diagnóstico"), 1800);
+  } catch {
+    els.status.textContent = "⚠ Não foi possível copiar para a área de transferência.";
   }
 });
 
