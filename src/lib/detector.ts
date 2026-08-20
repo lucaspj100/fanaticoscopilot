@@ -19,6 +19,12 @@ export type SignalType =
   | "aprofunde_objetivo"
   | "falta_problema"
   | "falta_implicacao"
+  | "spin_objetivo"
+  | "spin_problema"
+  | "spin_implicacao"
+  | "spin_confirmacao"
+  | "spin_suficiente"
+
   | "criterio_compra"
   | "personalize"
   | "quatro_fatores"
