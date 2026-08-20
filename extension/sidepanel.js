@@ -373,6 +373,12 @@ function renderCard(card) {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
+  if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) {
+    currentTurnId = 0;
+    atual = null;
+    ultimaTranscricao = null;
+    renderTurnoDiag();
+  }
   if (msg?.type === "COPILOT_CARD") renderCard(msg.card);
   if (msg?.type === "COPILOT_TIMING") renderTiming(msg.timing);
   if (msg?.type === "COPILOT_NET") renderNet(msg.net);

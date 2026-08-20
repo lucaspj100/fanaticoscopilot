@@ -166,6 +166,7 @@
   }
 
   function novoTurno(turnId) {
+    if (turnId === 1) { currentTurnId = 0; atual = null; } // nova sessão de call
     if (turnId <= currentTurnId) return;
     currentTurnId = turnId;
     atual = null;
@@ -230,6 +231,7 @@
       api.onCard(msg.card);
       if (msg.card?.etapa) setEtapa(msg.card.etapa);
     }
+    if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) { currentTurnId = 0; atual = null; }
     if (msg?.type === "COPILOT_TRANSCRIPT" && msg.final) novoTurno(msg.turnId ?? 0);
     if (msg?.type === "COPILOT_DECISION") {
       const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
