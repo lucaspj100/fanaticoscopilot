@@ -50,6 +50,8 @@ const Body = z.object({
   memoria: z.unknown().optional(),
   /** Últimas frases já sugeridas ao vendedor — prevenção de loop. */
   sugestoesAnteriores: z.array(z.string().max(240)).max(5).optional(),
+  /** Fala curta do cliente já concatenada com a interação anterior (ex.: "…virou necessidade? → (cliente) Virou."). */
+  falaCurtaContextual: z.string().max(600).nullable().optional(),
 });
 
 const ETAPAS = ["rapport", "di", "spin", "apresentacao", "gatilho", "fechamento"] as const;
@@ -220,6 +222,11 @@ export const Route = createFileRoute("/api/public/coach")({
           mapaTexto || "(ainda vazio)"
         }\nPRÓXIMAS LACUNAS REAIS: ${faltando.slice(0, 4).map((k) => SLOTS[k].rotulo.toLowerCase()).join(", ") || "nenhuma"}`;
 
+        // Fala curta contextual: "Virou." só faz sentido colada na pergunta anterior.
+        const blocoFalaCurta = parsed.falaCurtaContextual
+          ? `\n\nFALA CURTA COM CONTEXTO (o cliente respondeu à interação anterior — interprete junto, nunca descarte):\n${parsed.falaCurtaContextual}`
+          : "";
+
         const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
         const blocoSugestoes = sugestoes.length
           ? `\n\nFRASES JÁ SUGERIDAS AO VENDEDOR (não repita nem reformule):\n${sugestoes
@@ -341,7 +348,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -528,7 +535,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
+                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
               },
             ],
             key,
