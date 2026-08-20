@@ -269,6 +269,8 @@ export const Route = createFileRoute("/api/public/coach")({
             debug["sinal_baseado_em"] = "fala_cliente";
             debug["motivo_intervencao"] = motivoIA ?? `sinal do cliente: ${tipo}`;
             debug["confianca"] = confianca;
+            if (typeof obj["diStatus"] === "string") diStatusIA = obj["diStatus"] as string;
+
           } catch (e) {
             return nada("PARSE_ERROR", {
               ...debug,
