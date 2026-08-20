@@ -2,13 +2,17 @@ import {
   MAPA_SYSTEM_EXTRA,
   MAPA_VAZIO,
   aplicarPatchMapa,
+  avaliarSpin,
   inferirMapa,
   lacunas,
   mapaParaPrompt,
   normalizarMapa,
   novoMapa,
+  type AvaliacaoSpin,
   type Mapa,
+  type Slot,
 } from "./mapa";
+
 
 /**
  * Memória viva da call — estado resumido e pequeno, atualizado ao longo
