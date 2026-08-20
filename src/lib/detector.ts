@@ -495,6 +495,14 @@ export function detect(text: string, etapa?: string): Signal | null {
     if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
     return match(DI_RULES);
   }
+  if (etapa === "spin") {
+    const critico = match(RULES);
+    if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
+    // Objeção real de financeiro/tempo/pensar continua interrompendo o SPIN.
+    if (critico && OBJECOES_REAIS.has(critico.tipo)) return critico;
+    return match(SPIN_RULES) ?? null;
+  }
   return match(RULES);
+
 }
 
