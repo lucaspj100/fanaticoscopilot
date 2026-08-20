@@ -137,9 +137,8 @@
   $("min").addEventListener("click", () => wrap.classList.toggle("min"));
   $("close").addEventListener("click", () => api.hide(true));
 
-  /* ---------- cards (ciclo de vida por turno de fala) ---------- */
-  let atual = null; // { card, turnId }
-  let currentTurnId = 0;
+  /* ---------- recomendação ativa (estado central no background) ---------- */
+  let seenSequence = -1;
 
   function paint(card) {
     const cor = COR[card.nivel] || COR.atencao;
@@ -176,42 +175,19 @@
     $("porque").hidden = true;
   }
 
-  function novoTurno(turnId) {
-    if (turnId === 1) { currentTurnId = 0; atual = null; } // nova sessão de call
-    if (turnId <= currentTurnId) return;
-    currentTurnId = turnId;
-    atual = null;
-    paintEstado("Analisando…");
-  }
-
-  function onCard(card) {
-    if (!card || card.tipo === "nenhum") return;
-    const turnId = card.turnId ?? currentTurnId;
-    if (turnId < currentTurnId) return; // card de turno já encerrado
-    if (turnId > currentTurnId) {
-      currentTurnId = turnId;
-      atual = null;
+  /** Renderiza SEMPRE o estado central; nunca mantém cópia própria. */
+  function render(state) {
+    if (!state) return;
+    const sequence = state.sequence ?? 0;
+    if (sequence < seenSequence) return; // resposta fora de ordem: descarta
+    seenSequence = sequence;
+    if (state.kind === "card" && state.rec) {
+      paint(state.rec);
+      if (state.rec.etapa) setEtapa(state.rec.etapa);
+      api.show();
+    } else {
+      paintEstado(state.texto || "Aguardando a fala do cliente…");
     }
-
-    if (atual && atual.turnId === turnId && atual.card.tipo === card.tipo) {
-      const merged = {
-        ...atual.card,
-        ...card,
-        frase: card.frase || atual.card.frase,
-        porque: card.porque || atual.card.porque,
-      };
-      atual = { card: merged, turnId };
-      paint(merged);
-      return;
-    }
-    if (atual && atual.turnId === turnId) {
-      const novo = GRUPO[card.tipo] ?? 0;
-      const velho = GRUPO[atual.card.tipo] ?? 0;
-      if (novo <= velho) return;
-    }
-    atual = { card, turnId };
-    paint(card);
-    api.show();
   }
 
   const api = {
@@ -224,7 +200,7 @@
       host.style.display = "none";
       if (userClosed) chrome.storage.local.set({ overlayMode: "sidepanel" });
     },
-    onCard,
+    render,
   };
   window.__unitedCopilotOverlay = api;
 
@@ -242,26 +218,19 @@
   }
   chrome.storage?.local?.get(["etapaAtual"]).then(({ etapaAtual }) => setEtapa(etapaAtual || "rapport")).catch(() => {});
 
+  // Reinjeção/reload: recupera a recomendação atualmente válida.
+  chrome.runtime
+    .sendMessage({ type: "GET_ACTIVE_RECOMMENDATION" })
+    .then((res) => res?.ok && render(res.state))
+    .catch(() => {});
+
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === "COPILOT_CARD") {
-      api.onCard(msg.card);
-      if (msg.card?.etapa) setEtapa(msg.card.etapa);
-    }
-    if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) { currentTurnId = 0; atual = null; }
-    if (msg?.type === "COPILOT_TRANSCRIPT" && msg.final) novoTurno(msg.turnId ?? 0);
-    if (msg?.type === "COPILOT_DECISION") {
-      const turnId = msg.turnId ?? msg.decision?.turnId ?? currentTurnId;
-      const semAcao = !msg.decision?.tipo || msg.decision.tipo === "nenhum";
-      if (turnId >= currentTurnId && semAcao && (!atual || atual.turnId <= turnId)) {
-        currentTurnId = Math.max(currentTurnId, turnId);
-        atual = null;
-        paintEstado("Sem intervenção agora.");
-      }
-    }
+    if (msg?.type === "COPILOT_ACTIVE_REC") render(msg.state);
     if (msg?.type === "COPILOT_ETAPA") setEtapa(msg.etapa);
     if (msg?.type === "COPILOT_OVERLAY_HIDE") api.hide();
     if (msg?.type === "COPILOT_OVERLAY_SHOW") api.show();
   });
+
 
 
   api.show();
