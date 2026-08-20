@@ -377,15 +377,29 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
   },
 };
 
-export function detect(text: string): Signal | null {
+/** Sinais críticos que interrompem qualquer etapa. */
+const CRITICOS_SEMPRE = new Set<SignalType>(["fechou", "intencao_compra"]);
+
+/**
+ * Camada 1. Quando a etapa manual é "di", a Regra do Jogo tem prioridade:
+ * assunto (metodologia, tempo, preço) não sequestra a etapa.
+ */
+export function detect(text: string, etapa?: string): Signal | null {
   if (!text || text.trim().length < 3) return null;
-  for (const rule of RULES) {
-    for (const p of rule.patterns) {
-      if (p.test(text)) {
-        const f = FALLBACKS[rule.tipo as Exclude<SignalType, "nenhum">];
-        return { tipo: rule.tipo, ...f };
+  const match = (rules: typeof RULES): Signal | null => {
+    for (const rule of rules) {
+      for (const p of rule.patterns) {
+        if (p.test(text)) return { tipo: rule.tipo, ...FALLBACKS[rule.tipo as Exclude<SignalType, "nenhum">] };
       }
     }
+    return null;
+  };
+
+  if (etapa === "di") {
+    const critico = match(RULES);
+    if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
+    return match(DI_RULES);
   }
-  return null;
+  return match(RULES);
 }
+
