@@ -429,7 +429,7 @@ function renderTurnoDiag() {
 
 /** Renderiza SEMPRE o estado central do background (fonte única da verdade). */
 let seenSequence = -1;
-function renderActive(state) {
+function renderActive(state, stateUpdatedAt) {
   if (!state) return;
   const sequence = state.sequence ?? 0;
   if (sequence < seenSequence) return; // resposta fora de ordem: descarta
@@ -447,6 +447,8 @@ function renderActive(state) {
       els.cards.replaceChildren(el); // no máximo UMA recomendação visível
       atual = { card, el, turnId: card.turnId ?? currentTurnId };
     }
+    const base = stateUpdatedAt || card.completedAt || card.ts;
+    if (base) ultimoRenderMs = Math.max(0, Date.now() - base);
   } else {
     atual = null;
     if (state.kind === "analisando") showEstado("Analisando…", "analisando");
@@ -460,7 +462,13 @@ function renderActive(state) {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
   // Estado central: única origem do que o sidepanel mostra.
-  if (msg?.type === "COPILOT_ACTIVE_REC") renderActive(msg.state);
+  if (msg?.type === "COPILOT_ACTIVE_REC") renderActive(msg.state, msg.stateUpdatedAt);
+  if (msg?.type === "COPILOT_REC_LOG") {
+    ultimoRecLog = msg.log;
+    CopilotLog.add("recommendation_lifecycle", msg.log);
+    renderTurnoDiag();
+  }
+
   if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) {
     ultimaTranscricao = null;
     seenSequence = -1;
