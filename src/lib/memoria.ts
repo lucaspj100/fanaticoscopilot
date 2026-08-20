@@ -179,6 +179,9 @@ export function memoriaParaPrompt(m: Memoria): string {
   add("Objeções anteriores", m.objecoes);
   add("Sinais de compra", m.sinaisCompra);
   add("Outras informações", m.informacoesImportantes);
+  add("D.I. — estado", m.diStatus);
+  add("D.I. — motivo da resistência", m.diMotivoResistencia);
+  add("D.I. — critérios para decidir", m.diCriteriosParaDecidir);
   return linhas.join("\n");
 }
 
@@ -196,7 +199,18 @@ REGRAS:
 Campos possíveis:
 objetivo (string), problema (string), implicacao (string), necessidade (string),
 criterioCompra (array), pontosQueGostou (array), objecoes (array), sinaisCompra (array),
-informacoesImportantes (array)
+informacoesImportantes (array),
+diStatus (string), diMotivoResistencia (string), diCriteriosParaDecidir (array)
+
+ESTADO DA D.I. (Regra do Jogo — o cliente se compromete a dar um posicionamento AO FINAL, não a comprar agora):
+- diStatus só pode ser: nao_apresentada | apresentada | resistencia | criterios_identificados | resistencia_persistente | estabelecida
+- "resistencia": o cliente diz que não dará posicionamento / não decide hoje.
+- "criterios_identificados": ele lista o que precisa validar antes de se posicionar (método, horário, valores, comparar escolas...).
+  Registre esses pontos em diCriteriosParaDecidir (não só em criterioCompra).
+- "resistencia_persistente": mesmo com os critérios amarrados, ele mantém que não se posiciona.
+- "estabelecida": ele aceita dar um sim/não ao final.
+- diMotivoResistencia: o motivo real, nas palavras dele (ex.: "quer comparar antes de escolher").
+
 
 Responda SOMENTE JSON válido, sem markdown. Exemplo:
 {"objetivo":"conseguir promoção","problema":"inglês trava entrevistas"}
