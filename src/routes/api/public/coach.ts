@@ -252,7 +252,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoSpin}${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
