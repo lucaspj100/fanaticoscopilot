@@ -348,7 +348,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -535,7 +535,7 @@ export const Route = createFileRoute("/api/public/coach")({
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
+                }${blocoSpin}${blocoContexto}${blocoMapa}${blocoRota}${blocoFalaCurta}${blocoSugestoes}${blocoRitmo}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda em exatamente duas linhas, sem markdown:\nFRASE: a frase que o vendedor fala agora\nPORQUE: até 20 palavras explicando ao vendedor por que essa é a melhor ação agora.`,
               },
             ],
             key,
