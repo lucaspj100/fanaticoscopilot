@@ -126,6 +126,17 @@ function renderMemoria(memoria, alterados = []) {
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k.replace(/_/g, " ")} ${v.toFixed(1)}`);
   if (motiv.length) linhas.push(["motivacoes", "MOTIVAÇÕES", motiv.join(" · ")]);
+  // V3.0 — condução: dor atual e perfil de dificuldade do cliente.
+  if (memoria?.dorAtual && memoria.dorAtual !== "desconhecida")
+    linhas.push(["dorAtual", "DOR ATUAL", memoria.dorAtual]);
+  const pc = memoria?.perfilCliente || {};
+  const sinaisDif = Object.entries(pc).filter(([, v]) => v > 0);
+  if (sinaisDif.length)
+    linhas.push([
+      "perfilCliente",
+      "SINAIS DO CLIENTE",
+      sinaisDif.map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").toLowerCase()} ${v}`).join(" · "),
+    ]);
   if (memoria?.criteriosCompra?.length)
     linhas.push(["criteriosCompra", "CRITÉRIOS DE COMPRA", memoria.criteriosCompra.join(" · ")]);
   if (memoria?.ganchos?.length)
