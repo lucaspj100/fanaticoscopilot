@@ -190,6 +190,17 @@ ou qualquer entrevista sobre um assunto que o cliente citou apenas como critéri
 
 /** Trecho do playbook enviado APENAS quando a situação corresponde. */
 export const RULE_SNIPPETS: Record<string, string> = {
+  spin_objetivo:
+    "Ainda não há objetivo real. Descubra o que ele quer conquistar com o inglês — não fale de curso.",
+  spin_problema:
+    "Objetivo já dado. Descubra o que HOJE trava esse objetivo, em situações concretas do dia a dia dele.",
+  spin_implicacao:
+    "Problema já dado. Explore a consequência concreta: o que isso já custou (oportunidade, dinheiro, carreira).",
+  spin_confirmacao:
+    "Ele entregou a consequência. Confirme com as palavras dele e transforme em necessidade explícita.",
+  spin_suficiente:
+    "Objetivo, problema e implicação já estão claros. Não faça outra pergunta: confirme e avance para a apresentação.",
+
   di_resistencia:
     "Ele recusa dar posicionamento. Descubra o motivo real dessa recusa — não é objeção de preço nem 'preciso pensar'.",
   di_criterios:
