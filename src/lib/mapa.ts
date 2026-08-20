@@ -267,6 +267,36 @@ const estadoVal = (v: unknown): SlotEstado | null => {
   return s === "nao_explorado" || s === "parcial" || s === "respondido" ? (s as SlotEstado) : null;
 };
 
+const profVal = (v: unknown): Profundidade | null => {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return s === "baixa" || s === "media" || s === "alta" ? (s as Profundidade) : null;
+};
+
+const PROF_ORDEM: Record<Profundidade, number> = { baixa: 0, media: 1, alta: 2 };
+
+/** Frases genéricas: existe informação, mas ela não sustenta uma apresentação. */
+const GENERICO =
+  /^(quero|preciso|gostaria de)?\s*(aprender|falar|melhorar|destravar|ter)?\s*(o )?ingl[êe]s\b|^(pra|para) (minha|a minha) (carreira|vida)|^(crescer|evoluir|melhorar)( profissionalmente)?$|^(n[ãa]o (tenho|falo) ingl[êe]s( fluente)?)$/i;
+
+/** Marcas de consequência concreta — o que eleva a profundidade comercial. */
+const CONCRETO =
+  /\b(perdi|deixei de|nem tentei|n[ãa]o me candidatei|fiquei de fora|me tiraram|evito|evitei|n[ãa]o participo|travo|travei|passei vergonha|me custou|deixei passar|atrasou|abri m[ãa]o|recusei|n[ãa]o consegui)\b/i;
+
+/** Números, prazos, cargos, dinheiro: contexto verificável. */
+const ESPECIFICO =
+  /\b(\d|r\$|d[óo]lar|euro|sal[áa]rio|promo[çc][ãa]o|entrevista|reuni[ãa]o|call|cliente|chefe|vaga|projeto|semestre|m[êe]s|meses|ano)\b/i;
+
+/** Heurística local de profundidade comercial de uma informação. */
+export function profundidadeDe(valor: string | null | undefined): Profundidade {
+  const s = (valor ?? "").trim();
+  if (!s) return "baixa";
+  if (GENERICO.test(s) && !CONCRETO.test(s)) return "baixa";
+  const pontos = (CONCRETO.test(s) ? 2 : 0) + (ESPECIFICO.test(s) ? 1 : 0) + (s.split(/\s+/).length >= 8 ? 1 : 0);
+  if (pontos >= 3) return "alta";
+  if (pontos >= 1) return "media";
+  return "baixa";
+}
+
 /** Normaliza qualquer objeto (vindo do cliente ou da IA) para um mapa válido. */
 export function normalizarMapa(input: unknown): Mapa {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
@@ -275,18 +305,23 @@ export function normalizarMapa(input: unknown): Mapa {
     const raw = o[k];
     if (!raw) continue;
     if (typeof raw === "string") {
-      out[k] = { estado: "respondido", valor: texto(raw) };
+      out[k] = { estado: "respondido", valor: texto(raw), profundidade: profundidadeDe(texto(raw)) };
       continue;
     }
     if (typeof raw === "object") {
       const r = raw as Record<string, unknown>;
       const estado = estadoVal(r["estado"]);
       const valor = texto(r["valor"]);
-      out[k] = { estado: estado ?? (valor ? "respondido" : "nao_explorado"), valor };
+      out[k] = {
+        estado: estado ?? (valor ? "respondido" : "nao_explorado"),
+        valor,
+        profundidade: profVal(r["profundidade"]) ?? profundidadeDe(valor),
+      };
     }
   }
   return out;
 }
+
 
 /**
  * Descoberta LOCAL e instantânea (sem IA): qualquer informação espontânea
