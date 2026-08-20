@@ -35,6 +35,7 @@ function paintEtapas() {
 function setEtapa(etapa, { broadcast = true } = {}) {
   if (!ETAPAS.includes(etapa)) return;
   etapaAtual = etapa;
+  CopilotLog.setEtapa(etapa);
   paintEtapas();
   chrome.storage.local.set({ etapaAtual: etapa });
   if (broadcast) chrome.runtime.sendMessage({ type: "COPILOT_ETAPA", etapa }).catch(() => {});
