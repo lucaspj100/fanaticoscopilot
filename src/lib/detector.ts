@@ -148,6 +148,56 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   },
 ];
 
+/**
+ * Regras que SÓ valem quando o vendedor marcou a etapa D.I.
+ * Na D.I. o objetivo é a Regra do Jogo, não o assunto citado pelo cliente.
+ */
+const DI_RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
+  {
+    tipo: "di_pede_apresentacao",
+    patterns: [
+      /\b(n[ãa]o sei|nem sei|n[ãa]o fa[çc]o ideia)\b.*\b(por isso|justamente|por causa disso)?/i,
+      /(me )?(apresent|mostr|explic)\w*\s+(como funciona|a proposta|o curso|voc[êe]s)/i,
+      /\bquero (conhecer|entender) (voc[êe]s|a proposta|o curso)\b/i,
+      /\bj[áa] (te )?(falei|disse|respondi)\b/i,
+      /\bcomo eu (te )?(disse|falei)\b/i,
+    ],
+  },
+  {
+    tipo: "di_resistencia",
+    patterns: [
+      /n[ãa]o vou (dar|te dar) (nenhum )?(posicionamento|resposta|retorno)/i,
+      /n[ãa]o (vou|consigo) decidir (hoje|agora|na hora)/i,
+      /n[ãa]o tomo decis[ãa]o (na hora|assim|hoje|agora)/i,
+      /n[ãa]o (fecho|assino|decido) (nada )?(na primeira|hoje|agora|no impulso)/i,
+      /prefiro pensar depois/i,
+    ],
+  },
+  {
+    tipo: "di_comparacao",
+    patterns: [
+      /\b(outras|outra) (escolas?|op[çc][õo]es|cursos?)\b/i,
+      /\b(comparar|compara[çc][ãa]o|comparativo|pesquisar|or[çc]ar)\b/i,
+      /colocar (tudo )?no papel/i,
+    ],
+  },
+  {
+    tipo: "di_criterios",
+    patterns: [
+      /\b(preciso|quero|gostaria de) (entender|saber|verificar|ver|analisar|conhecer)\b/i,
+      /\b(depende|vai depender) (de|do|da)\b/i,
+    ],
+  },
+  {
+    tipo: "di_estabelecida",
+    patterns: [
+      /\b(pode ser|combinado|tudo bem|sem problema|claro)\b.*\b(final|fim|depois)\b/i,
+      /\b(te dou|dou) (um|o) (retorno|posicionamento|sim ou n[ãa]o)\b/i,
+    ],
+  },
+];
+
+
 export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo">> = {
   rapport_longo: {
     rotulo: "RAPPORT LONGO",
