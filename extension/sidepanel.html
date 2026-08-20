@@ -38,7 +38,11 @@
       <ul id="memoria"></ul>
     </details>
 
-    <button id="diag-toggle" class="ghost">Ver diagnóstico</button>
+    <div class="tools">
+      <button id="diag-toggle" class="ghost">Ver diagnóstico</button>
+      <button id="export-json" class="ghost">Exportar teste da call</button>
+      <button id="copy-diag" class="ghost">Copiar diagnóstico</button>
+    </div>
 
     <div id="diag-panel" hidden>
       <section class="diag">
@@ -78,6 +82,7 @@
       </footer>
     </div>
 
+    <script src="session-log.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

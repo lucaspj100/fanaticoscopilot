@@ -73,7 +73,9 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   {
     tipo: "financeiro",
     patterns: [
-      /\b(caro|pre[çc]o|valor|invest|or[çc]ament|dinheiro|grana|condi[çc]|desconto|parcel|boleto|financiament)\w*/i,
+      // "valores" no plural costuma aparecer como CRITÉRIO ("horário, método e valores"),
+      // não como objeção financeira — por isso só "valor" no singular dispara.
+      /\b(caro|pre[çc]o|valor(?!es)|invest|or[çc]ament|dinheiro|grana|condi[çc]|desconto|parcel|boleto|financiament)\w*/i,
       /n[ãa]o tenho (esse|como|dinheiro|verba)/i,
       /fora do meu (or[çc]amento|budget)/i,
       /cabe no bolso/i,

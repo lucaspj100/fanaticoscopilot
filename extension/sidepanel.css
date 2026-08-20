@@ -134,6 +134,8 @@ button.ghost {
 }
 button.ghost:hover { color: var(--text); }
 #diag-panel { display: flex; flex-direction: column; gap: 12px; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.tools .ghost { align-self: auto; }
 .card .tag .rotulo { display: inline-block; }
 
 /* modo compacto / teleprompter */
