@@ -19,6 +19,12 @@ export type SignalType =
   | "aprofunde_objetivo"
   | "falta_problema"
   | "falta_implicacao"
+  | "spin_objetivo"
+  | "spin_problema"
+  | "spin_implicacao"
+  | "spin_confirmacao"
+  | "spin_suficiente"
+
   | "criterio_compra"
   | "personalize"
   | "quatro_fatores"
@@ -78,14 +84,20 @@ const RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   {
     tipo: "financeiro",
     patterns: [
-      // "valores" no plural costuma aparecer como CRITÉRIO ("horário, método e valores"),
-      // não como objeção financeira — por isso só "valor" no singular dispara.
-      /\b(caro|pre[çc]o|valor(?!es)|invest|or[çc]ament|dinheiro|grana|condi[çc]|desconto|parcel|boleto|financiament)\w*/i,
-      /n[ãa]o tenho (esse|como|dinheiro|verba)/i,
-      /fora do meu (or[çc]amento|budget)/i,
-      /cabe no bolso/i,
+      // Citar "investimento", "valor" ou "preço" NÃO é objeção. Só dispara com
+      // resistência explícita: recusa, comparação de custo alto ou pedido de desconto.
+      /\b(muito |bem |t[áa] |est[áa] |ficou |achei )?caro\b/i,
+      /\b(salgado|pesad[oa]|apertado|fora da minha realidade)\b/i,
+      /n[ãa]o (tenho|teria|tenho como|consigo) (esse |o )?(valor|dinheiro|verba|condi[çc][ãa]o|grana)/i,
+      /n[ãa]o (tenho|d[áa]) (pra|para) pagar/i,
+      /fora do (meu )?(or[çc]amento|budget|alcance)/i,
+      /n[ãa]o cabe no (meu )?(bolso|or[çc]amento)/i,
+      /\b(desconto|abatimento|um precinho|melhora(r)? o valor)\b/i,
+      /(valor|pre[çc]o|mensalidade|investimento)\b[^.]{0,40}\b(alto|elevado|acima|puxad[oa]|caro)\b/i,
+      /\b(t[áa]|est[áa]|ficou) (bem |muito )?(acima|alto|puxado)\b/i,
     ],
   },
+
   {
     tipo: "segunda_opiniao",
     patterns: [
@@ -197,6 +209,53 @@ const DI_RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
   },
 ];
 
+/**
+ * Regras que SÓ valem quando o vendedor marcou a etapa SPIN.
+ * Classificam o QUE o cliente acabou de entregar (objetivo, problema ou
+ * implicação). A próxima pergunta é escolhida pela progressão, não pelo assunto.
+ */
+const SPIN_RULES: Array<{ tipo: SignalType; patterns: RegExp[] }> = [
+  {
+    // Consequência concreta já entregue → confirmar e avançar.
+    tipo: "spin_confirmacao",
+    patterns: [
+      /\b(perdi|deixei de|abri m[ãa]o|fiquei de fora|me tiraram|n[ãa]o consegui) \w+/i,
+      /\b(j[áa] perdi|j[áa] deixei de)\b/i,
+      /\b(me custou|custou caro|atrasou minha|travou minha)\b/i,
+    ],
+  },
+  {
+    // Problema atual explícito → falta a implicação.
+    tipo: "spin_implicacao",
+    patterns: [
+      /\b(travo|trava|congelo|bloqueio|gaguejo|me perco|n[ãa]o consigo (falar|responder|acompanhar))\b/i,
+      /\b(entendo|leio) mas n[ãa]o (falo|consigo falar)/i,
+      /\b(reuni[ãa]o|call|entrevista|apresenta[çc][ãa]o)\b[^.]{0,40}\b(ingl[êe]s|dif[íi]cil|complicad)/i,
+      /\bmeu ingl[êe]s [ée] (b[áa]sico|fraco|ruim|travado)\b/i,
+    ],
+  },
+  {
+    // Objetivo claro → falta o problema atual.
+    tipo: "spin_problema",
+    patterns: [
+      /\b(ganhar|receber|faturar|sal[áa]rio) em (d[óo]lar|euro|moeda)/i,
+      /\b(trabalhar|morar|viajar) (fora|no exterior|nos eua|em outro pa[íi]s)/i,
+      /\b(promo[çc][ãa]o|pr[óo]ximo n[íi]vel|nova oportunidade|mudar de [áa]rea|crescer na carreira)\b/i,
+      /\bquero (ganhar|conquistar|chegar|alcan[çc]ar|assumir)\b/i,
+    ],
+  },
+  {
+    // Resposta genérica → ainda falta o objetivo real.
+    tipo: "spin_objetivo",
+    patterns: [
+      /\b(quero|preciso) (aprender|falar|melhorar|destravar) (o )?ingl[êe]s\b/i,
+      /\b(sempre quis|sempre tive vontade|[ée] importante hoje em dia)\b/i,
+      /\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i,
+    ],
+  },
+];
+
+
 
 export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo">> = {
   rapport_longo: {
@@ -255,6 +314,41 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
     nivel: "atencao",
     etapa: "spin",
   },
+  spin_objetivo: {
+    rotulo: "DESCUBRA O OBJETIVO",
+    orientacao: "Descubra o que ele quer conquistar com o inglês.",
+    frase: "O que o inglês destravaria pra você que hoje não acontece?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_problema: {
+    rotulo: "DESCUBRA O PROBLEMA",
+    orientacao: "Objetivo claro. Descubra o que hoje trava.",
+    frase: "Hoje, em que momento exatamente o inglês te trava?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_implicacao: {
+    rotulo: "APROFUNDE A IMPLICAÇÃO",
+    orientacao: "Explore a consequência concreta desse problema.",
+    frase: "O que isso já te custou na prática?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_confirmacao: {
+    rotulo: "CONFIRME A NECESSIDADE",
+    orientacao: "Confirme com as palavras dele antes de avançar.",
+    frase: "Então o que você precisa é destravar a fala no dia a dia, é isso?",
+    nivel: "atencao",
+    etapa: "spin",
+  },
+  spin_suficiente: {
+    rotulo: "SPIN SUFICIENTE",
+    orientacao: "Você já tem material suficiente. Avance.",
+    frase: "",
+    nivel: "positivo",
+    etapa: "spin",
+  },
   falta_problema: {
     rotulo: "FALTA PROBLEMA",
     orientacao: "Descubra o que hoje impede esse avanço.",
@@ -262,6 +356,7 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
     nivel: "atencao",
     etapa: "spin",
   },
+
   aprofunde: {
     rotulo: "APROFUNDE",
     orientacao: "A resposta ainda está superficial.",
@@ -380,6 +475,10 @@ export const FALLBACKS: Record<Exclude<SignalType, "nenhum">, Omit<Signal, "tipo
 /** Sinais críticos que interrompem qualquer etapa. */
 const CRITICOS_SEMPRE = new Set<SignalType>(["fechou", "intencao_compra"]);
 
+/** Objeções reais que interrompem o SPIN (financeiro só com resistência explícita). */
+const OBJECOES_REAIS = new Set<SignalType>(["financeiro", "pensar", "segunda_opiniao", "tempo"]);
+
+
 /**
  * Camada 1. Quando a etapa manual é "di", a Regra do Jogo tem prioridade:
  * assunto (metodologia, tempo, preço) não sequestra a etapa.
@@ -400,6 +499,14 @@ export function detect(text: string, etapa?: string): Signal | null {
     if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
     return match(DI_RULES);
   }
+  if (etapa === "spin") {
+    const critico = match(RULES);
+    if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
+    // Objeção real de financeiro/tempo/pensar continua interrompendo o SPIN.
+    if (critico && OBJECOES_REAIS.has(critico.tipo)) return critico;
+    return match(SPIN_RULES) ?? null;
+  }
   return match(RULES);
+
 }
 

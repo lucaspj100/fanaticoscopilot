@@ -2,14 +2,23 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
-import { camposPreenchidos, memoriaParaPrompt, normalizarMemoria } from "@/lib/memoria";
+import {
+  camposPreenchidos,
+  derivarSpinStatus,
+  memoriaParaPrompt,
+  normalizarMemoria,
+  spinSuficiente,
+} from "@/lib/memoria";
 import {
   CLASSIFY_SYSTEM,
   COACH_SYSTEM,
   DI_CLASSIFY_SYSTEM,
   DI_COACH_EXTRA,
   RULE_SNIPPETS,
+  SPIN_CLASSIFY_SYSTEM,
+  SPIN_COACH_EXTRA,
 } from "@/lib/playbook";
+
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -62,6 +71,18 @@ const DI_TIPOS = new Set<string>([
   "di_estabelecida",
 ]);
 
+/** Tipos próprios da etapa SPIN. */
+const SPIN_TIPOS = new Set<string>([
+  "spin_objetivo",
+  "spin_problema",
+  "spin_implicacao",
+  "spin_confirmacao",
+  "spin_suficiente",
+]);
+
+/** Objeções reais que podem interromper o SPIN. */
+const OBJECOES_REAIS = new Set<string>(["financeiro", "pensar", "segunda_opiniao", "tempo"]);
+
 /** Sinais críticos que interrompem qualquer etapa. */
 const CRITICOS_SEMPRE = new Set<string>(["fechou", "intencao_compra"]);
 
@@ -75,7 +96,9 @@ const CRITICOS = new Set<string>([
   "tempo",
   "metodologia",
 ]);
-const threshold = (tipo: string) => (CRITICOS.has(tipo) ? 0.75 : DI_TIPOS.has(tipo) ? 0.6 : 0.65);
+const threshold = (tipo: string) =>
+  CRITICOS.has(tipo) ? 0.75 : DI_TIPOS.has(tipo) || SPIN_TIPOS.has(tipo) ? 0.6 : 0.65;
+
 
 
 
@@ -132,6 +155,8 @@ export const Route = createFileRoute("/api/public/coach")({
             ? parsed.etapaManual
             : undefined;
         const isDI = etapaManual === "di";
+        const isSpin = etapaManual === "spin";
+
 
         const last = parsed.turns[parsed.turns.length - 1];
         const quick = last ? detect(last.text, etapaManual) : null;
@@ -144,10 +169,17 @@ export const Route = createFileRoute("/api/public/coach")({
         const memoria = normalizarMemoria(parsed.memoria);
         const memoriaTexto = memoriaParaPrompt(memoria);
         const camposMemoria = camposPreenchidos(memoria);
+        const spinPronto = spinSuficiente(memoria);
         const blocoContexto = memoriaTexto
           ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
           : "";
         const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
+        const blocoSpin = isSpin
+          ? `\nESTADO DO SPIN: ${derivarSpinStatus(memoria)}${
+              spinPronto ? " — SPIN SUFICIENTE: não investigue mais, confirme e avance." : ""
+            }`
+          : "";
+
         const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
         const blocoSugestoes = sugestoes.length
           ? `\n\nFRASES JÁ SUGERIDAS AO VENDEDOR (não repita nem reformule):\n${sugestoes
@@ -173,18 +205,29 @@ export const Route = createFileRoute("/api/public/coach")({
         // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
         // Na D.I. o assunto citado pelo cliente NÃO sequestra a etapa: só valem tipos da D.I. e sinais críticos.
         const aceitaNaEtapa = (t?: string) =>
-          !!t && t in FALLBACKS && !PROCESSO.has(t) && (!isDI || DI_TIPOS.has(t) || CRITICOS_SEMPRE.has(t));
-        const tipoCliente = aceitaNaEtapa(parsed.tipo)
+          !!t &&
+          t in FALLBACKS &&
+          !PROCESSO.has(t) &&
+          (!isDI || DI_TIPOS.has(t) || CRITICOS_SEMPRE.has(t)) &&
+          (!isSpin || SPIN_TIPOS.has(t) || OBJECOES_REAIS.has(t) || CRITICOS_SEMPRE.has(t));
+        let tipoCliente = aceitaNaEtapa(parsed.tipo)
           ? (parsed.tipo as string)
           : aceitaNaEtapa(quick?.tipo)
             ? (quick as { tipo: string }).tipo
             : "nenhum";
+
+        // SPIN já suficiente: não investigue de novo — oriente a avançar.
+        if (isSpin && spinPronto && SPIN_TIPOS.has(tipoCliente) && tipoCliente !== "spin_suficiente") {
+          tipoCliente = "spin_suficiente";
+        }
 
         let tipo = tipoCliente as SignalType;
         let etapaIA: string | undefined;
         let orientacaoIA: string | undefined;
         let fraseIA = "";
         let diStatusIA: string | undefined;
+        let eixoIA: string | undefined;
+
 
         let confianca = tipo === "nenhum" ? 0 : 0.9;
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
@@ -203,10 +246,13 @@ export const Route = createFileRoute("/api/public/coach")({
           try {
             const res = await callAI(
               [
-                { role: "system", content: isDI ? DI_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM },
+                {
+                  role: "system",
+                  content: isDI ? DI_CLASSIFY_SYSTEM : isSpin ? SPIN_CLASSIFY_SYSTEM : CLASSIFY_SYSTEM,
+                },
                 {
                   role: "user",
-                  content: `${blocoEtapa}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                  content: `${blocoEtapa}${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
                 },
               ],
               key,
@@ -251,6 +297,13 @@ export const Route = createFileRoute("/api/public/coach")({
                 tipoSugerido: t,
                 motivo_silencio: "assunto não estabelece a Regra do Jogo",
               });
+            if (isSpin && !SPIN_TIPOS.has(t) && !OBJECOES_REAIS.has(t) && !CRITICOS_SEMPRE.has(t))
+              return nada("FORA_DA_ETAPA_SPIN", {
+                ...debug,
+                confianca,
+                tipoSugerido: t,
+                motivo_silencio: "assunto não aprofunda o SPIN",
+              });
             if (!(t in FALLBACKS))
               return nada("PARSE_ERROR", { ...debug, tipoInvalido: t, motivo_silencio: "tipo inválido" });
 
@@ -272,6 +325,7 @@ export const Route = createFileRoute("/api/public/coach")({
             debug["motivo_intervencao"] = motivoIA ?? `sinal do cliente: ${tipo}`;
             debug["confianca"] = confianca;
             if (typeof obj["diStatus"] === "string") diStatusIA = obj["diStatus"] as string;
+            if (typeof obj["eixo"] === "string") eixoIA = (obj["eixo"] as string).slice(0, 40);
 
           } catch (e) {
             return nada("PARSE_ERROR", {
@@ -298,6 +352,13 @@ export const Route = createFileRoute("/api/public/coach")({
           di_pede_apresentacao: "apresentada",
           di_estabelecida: "estabelecida",
         };
+        const spinStatus = isSpin ? derivarSpinStatus(memoria) : null;
+        if (isSpin) {
+          debug["spin_status"] = spinStatus;
+          debug["spin_suficiente"] = spinPronto;
+          debug["spin_eixos_explorados"] = memoria.spinPerguntasJaExploradas;
+        }
+
         const diStatus = isDI ? (diStatusIA ?? DI_STATUS_POR_TIPO[tipo] ?? null) : null;
         if (isDI) debug["di_status"] = diStatus;
 
@@ -310,6 +371,8 @@ export const Route = createFileRoute("/api/public/coach")({
           confianca,
           decisao,
           diStatus,
+          spinStatus,
+          eixo: eixoIA ?? null,
           fonte: "ia" as const,
         };
 
@@ -330,12 +393,19 @@ export const Route = createFileRoute("/api/public/coach")({
         try {
           const res = await callAI(
             [
-              { role: "system", content: isDI ? `${COACH_SYSTEM}\n\n${DI_COACH_EXTRA}` : COACH_SYSTEM },
+              {
+                role: "system",
+                content: isDI
+                  ? `${COACH_SYSTEM}\n\n${DI_COACH_EXTRA}`
+                  : isSpin
+                    ? `${COACH_SYSTEM}\n\n${SPIN_COACH_EXTRA}`
+                    : COACH_SYSTEM,
+              },
               {
                 role: "user",
                 content: `SITUAÇÃO: ${base.rotulo}\nETAPA: ${etapa ?? "-"}\nREGRA: ${
                   RULE_SNIPPETS[tipo] ?? base.orientacao
-                }${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
+                }${blocoSpin}${blocoContexto}${blocoSugestoes}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nEscreva só a frase que o vendedor fala agora.`,
               },
             ],
             key,

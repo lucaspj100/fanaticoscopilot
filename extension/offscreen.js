@@ -51,17 +51,24 @@ const MEMORIA_VAZIA = {
   diStatus: "nao_apresentada",
   diMotivoResistencia: null,
   diCriteriosParaDecidir: [],
+  spinStatus: "nao_iniciado",
+  spinObjetivo: null,
+  spinProblema: null,
+  spinImplicacoes: [],
+  spinNecessidade: null,
+  spinPerguntasJaExploradas: [],
 };
 
 let etapaManual = "rapport"; // fonte da verdade — definida pelo vendedor
-let memoria = { ...MEMORIA_VAZIA };
+const novaMemoria = () => JSON.parse(JSON.stringify(MEMORIA_VAZIA));
+let memoria = novaMemoria();
 let memoriaAt = null;
 let memoriaInFlight = false;
 let sugestoesAnteriores = []; // últimas frases sugeridas — evita repetir pergunta
 
 function resetSessao() {
   turns.length = 0;
-  memoria = { ...MEMORIA_VAZIA, etapaAtual: etapaManual };
+  memoria = { ...novaMemoria(), etapaAtual: etapaManual };
   memoriaAt = null;
   memoriaInFlight = false;
   sugestoesAnteriores = [];
@@ -117,7 +124,7 @@ const RULES = [
   ["fechou", [/\b(vamos fechar|bora fechar|quero (come[çc]ar|fechar|me matricular)|fechado|t[ôo] dentro|me matricula)\b/i, /\b(sim,? (vamos|quero|pode))\b/i]],
   ["intencao_compra", [/como (eu )?(fa[çc]o|posso) (para|pra) (come[çc]ar|contratar|assinar)/i, /\b(manda o link|onde (eu )?assino|qual o pr[óo]ximo passo)\b/i]],
   ["pensar", [/preciso pensar/i, /vou pensar/i, /pensar (a respeito|com calma|melhor)/i, /depois eu (te )?(retorno|aviso|falo)/i]],
-  ["financeiro", [/\b(caro|pre[çc]o|valor(?!es)|invest|or[çc]ament|dinheiro|grana|desconto|parcel|condi[çc])\w*/i, /n[ãa]o tenho (esse|como|dinheiro|verba)/i]],
+  ["financeiro", [/\b(muito |bem |t[áa] |est[áa] |ficou |achei )?caro\b/i, /\b(salgado|pesad[oa]|fora da minha realidade)\b/i, /n[ãa]o (tenho|teria|consigo) (esse |o )?(valor|dinheiro|verba|condi[çc][ãa]o|grana)/i, /fora do (meu )?(or[çc]amento|budget|alcance)/i, /\b(desconto|abatimento|melhorar o valor)\b/i, /(valor|pre[çc]o|mensalidade|investimento)\b[^.]{0,40}\b(alto|elevado|acima|puxad[oa]|caro)\b/i]],
   ["segunda_opiniao", [/(minha|meu) (esposa|marido|s[óo]ci[ao]|companheir[ao]|chefe|gestor)/i, /preciso (consultar|alinhar|conversar com)/i, /n[ãa]o decido sozinh/i]],
   ["tempo", [/n[ãa]o (tenho|teria|vou ter) tempo/i, /\b(corrid[oa]|sem tempo|agenda cheia|mais pra frente|ano que vem)\w*/i, /agora n[ãa]o [ée] (o|um bom) momento/i]],
   ["metodologia", [/como (funciona|que funciona|seria)/i, /qual (a|é a) (metodologia|m[ée]todo|din[âa]mica)/i, /\b(quanto tempo dura|garantia|funciona mesmo)\w*/i]],
@@ -158,6 +165,30 @@ const DI_FALLBACKS = {
   di_estabelecida: { rotulo: "D.I. ESTABELECIDA", nivel: "positivo", orientacao: "Confirme em uma frase e siga a call.", etapa: "di" },
 };
 
+/* Etapa SPIN: progressão objetivo -> problema -> implicação -> necessidade. */
+const SPIN_RULES = [
+  ["spin_confirmacao", [/\b(perdi|deixei de|abri m[ãa]o|fiquei de fora|n[ãa]o consegui) \w+/i, /\b(me custou|atrasou minha|travou minha)\b/i]],
+  ["spin_implicacao", [/\b(travo|trava|congelo|gaguejo|me perco|n[ãa]o consigo (falar|responder|acompanhar))\b/i, /\b(entendo|leio) mas n[ãa]o (falo|consigo falar)/i, /\bmeu ingl[êe]s [ée] (b[áa]sico|fraco|ruim|travado)\b/i]],
+  ["spin_problema", [/\b(ganhar|receber|faturar|sal[áa]rio) em (d[óo]lar|euro|moeda)/i, /\b(trabalhar|morar|viajar) (fora|no exterior|nos eua)/i, /\b(promo[çc][ãa]o|pr[óo]ximo n[íi]vel|mudar de [áa]rea|crescer na carreira)\b/i, /\bquero (ganhar|conquistar|chegar|alcan[çc]ar|assumir)\b/i]],
+  ["spin_objetivo", [/\b(quero|preciso) (aprender|falar|melhorar|destravar) (o )?ingl[êe]s\b/i, /\b(sempre quis|sempre tive vontade)\b/i, /\b(pra|para) (minha|a minha) (carreira|profiss[ãa]o|vida)\b/i]],
+];
+
+const SPIN_FALLBACKS = {
+  spin_objetivo: { rotulo: "DESCUBRA O OBJETIVO", nivel: "atencao", orientacao: "Descubra o que ele quer conquistar com o inglês.", etapa: "spin" },
+  spin_problema: { rotulo: "DESCUBRA O PROBLEMA", nivel: "atencao", orientacao: "Objetivo claro. Descubra o que hoje trava.", etapa: "spin" },
+  spin_implicacao: { rotulo: "APROFUNDE A IMPLICAÇÃO", nivel: "atencao", orientacao: "Explore a consequência concreta desse problema.", etapa: "spin" },
+  spin_confirmacao: { rotulo: "CONFIRME A NECESSIDADE", nivel: "atencao", orientacao: "Confirme com as palavras dele antes de avançar.", etapa: "spin" },
+  spin_suficiente: { rotulo: "SPIN SUFICIENTE", nivel: "positivo", orientacao: "Você já tem material suficiente. Avance.", etapa: "spin" },
+};
+
+const OBJECOES_REAIS = new Set(["financeiro", "pensar", "segunda_opiniao", "tempo"]);
+
+/** SPIN suficiente = objetivo + problema + ao menos uma implicação. */
+function spinSuficiente(m) {
+  const impl = (m.spinImplicacoes && m.spinImplicacoes.length ? m.spinImplicacoes : m.implicacao ? [m.implicacao] : []);
+  return !!(m.spinObjetivo || m.objetivo) && !!(m.spinProblema || m.problema) && impl.length > 0;
+}
+
 const CRITICOS_SEMPRE = new Set(["fechou", "intencao_compra"]);
 
 function matchRules(text, rules, fallbacks) {
@@ -172,6 +203,15 @@ function detect(text, etapa) {
     const critico = matchRules(text, RULES, FALLBACKS);
     if (critico && CRITICOS_SEMPRE.has(critico.tipo)) return critico;
     return matchRules(text, DI_RULES, DI_FALLBACKS);
+  }
+  if (etapa === "spin") {
+    const critico = matchRules(text, RULES, FALLBACKS);
+    if (critico && (CRITICOS_SEMPRE.has(critico.tipo) || OBJECOES_REAIS.has(critico.tipo))) return critico;
+    const sinal = matchRules(text, SPIN_RULES, SPIN_FALLBACKS);
+    if (sinal && spinSuficiente(memoria) && sinal.tipo !== "spin_suficiente") {
+      return { tipo: "spin_suficiente", ...SPIN_FALLBACKS.spin_suficiente };
+    }
+    return sinal;
   }
   return matchRules(text, RULES, FALLBACKS);
 }
@@ -354,6 +394,15 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt, turnId) {
 
       })
       .catch(() => {});
+    if (card.spinStatus) memoria.spinStatus = card.spinStatus;
+    if (!Array.isArray(memoria.spinPerguntasJaExploradas)) memoria.spinPerguntasJaExploradas = [];
+    if (card.eixo) {
+      const eixo = String(card.eixo).toLowerCase();
+      if (!memoria.spinPerguntasJaExploradas.some((x) => x.toLowerCase() === eixo)) {
+        memoria.spinPerguntasJaExploradas.push(eixo);
+        while (memoria.spinPerguntasJaExploradas.length > 6) memoria.spinPerguntasJaExploradas.shift();
+      }
+    }
     if (card.diStatus) {
       memoria.diStatus = card.diStatus;
       chrome.runtime
