@@ -87,27 +87,42 @@ function emitMemoria(alterados) {
     .catch(() => {});
 }
 
+/** Fila de memória: nenhuma fala é perdida se outra atualização estiver em voo. */
+const memoriaFila = [];
+
 /** Atualiza a memória em paralelo — nunca bloqueia o card principal. */
 async function atualizarMemoria(text) {
+  if (!text) return;
+  memoriaFila.push(text);
   if (memoriaInFlight) return;
   memoriaInFlight = true;
   try {
-    const data = await apiFetch("/api/public/memory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memoria, text, etapa: etapaManual }),
-    });
-    if (data?.memoria) {
-      memoria = { ...data.memoria, etapaAtual: etapaManual };
-      memoriaAt = Date.now();
-      emitMemoria(data.alterados || []);
+    while (memoriaFila.length) {
+      const proximo = memoriaFila.shift();
+      try {
+        const data = await apiFetch("/api/public/memory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ memoria, text: proximo, etapa: etapaManual }),
+        });
+        if (data?.memoria) {
+          memoria = { ...data.memoria, etapaAtual: etapaManual };
+          memoriaAt = Date.now();
+          if (typeof tel === "object") {
+            tel.memoryUpdates++;
+            tel.lastMemoryAt = memoriaAt;
+          }
+          emitMemoria(data.alterados || []);
+        }
+      } catch {
+        /* memória é best-effort */
+      }
     }
-  } catch {
-    /* memória é best-effort */
   } finally {
     memoriaInFlight = false;
   }
 }
+
 
 function log(status, extra) {
   chrome.runtime.sendMessage({ type: "COPILOT_STATUS", status, ...extra }).catch(() => {});
