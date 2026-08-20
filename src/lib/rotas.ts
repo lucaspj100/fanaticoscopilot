@@ -19,6 +19,14 @@ import {
   novoMapa,
   profundidadeDe,
 } from "./mapa";
+import {
+  dificuldadeCliente,
+  escolherContribuicao,
+  type Dificuldade,
+  type DorAtual,
+  type PerfilCliente,
+  type SinaisFala,
+} from "./contribuicao";
 
 export const MOTIVACOES = [
   "dor_passada",
@@ -145,7 +153,18 @@ export type NextAction =
   | "descobrir_criterio"
   | "apresentar"
   | "tratar_objecao"
-  | "ficar_em_silencio";
+  | "ficar_em_silencio"
+  // V3.0 — contribuição: devolver valor antes de extrair informação.
+  | "contextualizar"
+  | "trazer_analogia"
+  | "dar_exemplo"
+  | "reformular_perspectiva"
+  | "conectar_pontos"
+  | "fazer_hipotese"
+  | "validar_hipotese"
+  | "perguntar"
+  | "aprofundar";
+
 
 type Degrau = {
   /** O que ainda queremos descobrir. */
@@ -395,6 +414,10 @@ export type Decisao = {
   exemplo: string | null;
   motivo: string;
   profundidadeAtual: Profundidade;
+  /** V3.0 — a ação é uma contribuição (não uma pergunta). */
+  contribuicao?: boolean;
+  dificuldadeCliente?: Dificuldade;
+  dorAtual?: DorAtual;
 };
 
 const PILARES: Array<{ chave: string; ok: (m: Mapa) => boolean }> = [
@@ -437,14 +460,26 @@ export function decidirProximaAcao(params: {
   minimizou?: boolean;
   perguntasSeguidas?: number;
   objecaoAtiva?: boolean;
+  /** V3.0 — camada de contribuição. */
+  perfil?: PerfilCliente | undefined;
+  sinais?: Partial<SinaisFala> | undefined;
+  dorAtual?: DorAtual | undefined;
+  clienteEngajado?: boolean | undefined;
 }): Decisao {
   const mapa = params.mapa ?? novoMapa();
   const ativas = rotasAtivas(params.motivacoes);
   let rota = rotaDominante(params.motivacoes, params.naFala ?? []);
   const prof = profundidadeAtual(mapa);
   const faltando = pilaresFaltando(mapa);
+  const dif = dificuldadeCliente(params.perfil);
 
-  const base = (nextAction: NextAction, alvo: string, motivo: string, exemplo: string | null = null): Decisao => ({
+  const base = (
+    nextAction: NextAction,
+    alvo: string,
+    motivo: string,
+    exemplo: string | null = null,
+    contribuicao: boolean = false,
+  ): Decisao => ({
     rota,
     rotasAtivas: ativas,
     nextAction,
@@ -452,9 +487,28 @@ export function decidirProximaAcao(params: {
     exemplo,
     motivo,
     profundidadeAtual: prof,
+    contribuicao,
+    dificuldadeCliente: dif,
+    dorAtual: params.dorAtual ?? "desconhecida",
   });
 
   if (params.objecaoAtiva) return base("tratar_objecao", "a trava real por trás da objeção", "objeção ativa na fala do cliente");
+
+  // V3.0 — antes de extrair mais informação, veja se dá para devolver valor.
+  if (!params.spinSuficiente) {
+    const contrib = escolherContribuicao({
+      mapa,
+      perfil: params.perfil,
+      sinais: params.sinais,
+      dorAtual: params.dorAtual,
+      perguntasSeguidas: params.perguntasSeguidas,
+      rota,
+      clienteEngajado: params.clienteEngajado,
+    });
+    if (contrib) return base(contrib.nextAction, contrib.alvo, contrib.motivo, contrib.exemplo || null, true);
+  }
+
+
 
   // Minimizou a dor: a rota emocional morreu — vá para ambição, janela ou timing.
   if (params.minimizou) {
@@ -522,6 +576,14 @@ export function rotaParaPrompt(d: Decisao): string {
   );
   linhas.push(`PROFUNDIDADE COMERCIAL ATUAL: ${d.profundidadeAtual}`);
   linhas.push(`PRÓXIMA AÇÃO: ${d.nextAction} — ${d.motivo}`);
+  if (d.contribuicao)
+    linhas.push(
+      "ESTA AÇÃO NÃO É UMA PERGUNTA: contribua com raciocínio, contexto, exemplo, analogia ou hipótese. A frase pode terminar sem '?'.",
+    );
+  if (d.dorAtual === "negada")
+    linhas.push(
+      "DOR ATUAL NEGADA: é PROIBIDO insistir em dor de hoje ou reformular \"onde o inglês te trava?\". Trabalhe ambição, futuro, timing e alcance.",
+    );
   linhas.push(`DESCOBRIR AGORA: ${d.informacaoQueQuerDescobrir}`);
   if (d.exemplo) linhas.push(`REFERÊNCIA DE FALA (não copie literalmente): ${d.exemplo}`);
   return linhas.join("\n");

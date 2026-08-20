@@ -25,6 +25,19 @@ import {
   type Motivacao,
   type Motivacoes,
 } from "./rotas";
+import {
+  PERFIL_ZERO,
+  acumularPerfil,
+  classificarDorAtual,
+  detectarSinaisFala,
+  dificuldadeCliente,
+  normalizarPerfil,
+  novoPerfil,
+  perguntasConsecutivas,
+  type DorAtual,
+  type PerfilCliente,
+  type TipoIntervencao,
+} from "./contribuicao";
 
 
 /**
@@ -83,6 +96,12 @@ export type Memoria = {
   criteriosCompra: string[];
   /** Ganchos para a apresentação: necessidade do cliente → diferencial United. */
   ganchos: Gancho[];
+  /** V3.0 — sinais de cliente difícil acumulados na call. */
+  perfilCliente: PerfilCliente;
+  /** V3.0 — o cliente confirmou, negou ou ainda não revelou dor atual. */
+  dorAtual: DorAtual;
+  /** V3.0 — histórico do tipo das últimas intervenções sugeridas. */
+  ultimasIntervencoes: TipoIntervencao[];
 };
 
 export const MEMORIA_VAZIA: Memoria = {
@@ -111,6 +130,9 @@ export const MEMORIA_VAZIA: Memoria = {
   rota: null,
   criteriosCompra: [],
   ganchos: [],
+  perfilCliente: PERFIL_ZERO,
+  dorAtual: "desconhecida",
+  ultimasIntervencoes: [],
 };
 
 
@@ -301,6 +323,15 @@ export function normalizarMemoria(input: unknown): Memoria {
   out.rota = rotaVal(o["rota"]) ?? rotaDominante(out.motivacoes);
   out.criteriosCompra = arr(o["criteriosCompra"]);
   out.ganchos = normalizarGanchos(o["ganchos"]);
+  out.perfilCliente = normalizarPerfil(o["perfilCliente"]);
+  out.dorAtual = (["negada", "confirmada", "desconhecida"] as const).includes(
+    o["dorAtual"] as DorAtual,
+  )
+    ? (o["dorAtual"] as DorAtual)
+    : "desconhecida";
+  out.ultimasIntervencoes = (Array.isArray(o["ultimasIntervencoes"]) ? o["ultimasIntervencoes"] : [])
+    .filter((x): x is TipoIntervencao => x === "pergunta" || x === "contribuicao")
+    .slice(-6);
   return out;
 }
 
@@ -322,6 +353,9 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
     motivacoes: { ...novoMotivacoes(), ...(atual.motivacoes ?? {}) },
     criteriosCompra: [...(atual.criteriosCompra ?? [])],
     ganchos: [...(atual.ganchos ?? [])],
+    perfilCliente: { ...novoPerfil(), ...(atual.perfilCliente ?? {}) },
+    dorAtual: atual.dorAtual ?? "desconhecida",
+    ultimasIntervencoes: [...(atual.ultimasIntervencoes ?? [])],
   };
   const alterados: string[] = [];
 
@@ -394,12 +428,29 @@ export function aplicarMapaLocal(memoria: Memoria, text: string): { memoria: Mem
   const criteriosCompra = [...(memoria.criteriosCompra ?? []), ...criteriosNovos].slice(-8);
   const rota = rotaDominante(motivacoes, naFala) ?? memoria.rota ?? null;
   const ganchos = ganchosApresentacao(mapa, criteriosCompra);
+  // V3.0 — sinais de condução: cliente difícil, dor negada, resposta vaga.
+  const { perfil, sinais } = acumularPerfil(memoria.perfilCliente, text);
+  const dorAtual = classificarDorAtual(memoria.dorAtual, text);
+  const sinaisAlterados = Object.entries(sinais)
+    .filter(([, v]) => v)
+    .map(([k]) => `sinal.${k}`);
   return {
-    memoria: { ...memoria, mapa, motivacoes, rota, criteriosCompra, ganchos },
+    memoria: {
+      ...memoria,
+      mapa,
+      motivacoes,
+      rota,
+      criteriosCompra,
+      ganchos,
+      perfilCliente: perfil,
+      dorAtual,
+    },
     alterados: [
       ...alterados.map((k) => `mapa.${k}`),
       ...naFala.map((m) => `motivacao.${m}`),
       ...criteriosNovos.map((c) => `criterio.${c}`),
+      ...sinaisAlterados,
+      ...(dorAtual !== memoria.dorAtual ? [`dorAtual.${dorAtual}`] : []),
     ],
   };
 }
@@ -407,17 +458,29 @@ export function aplicarMapaLocal(memoria: Memoria, text: string): { memoria: Mem
 /** Decisão comercial completa (rota dominante + próxima ação) a partir da memória. */
 export function decisaoDaMemoria(
   m: Memoria,
-  opts: { naFala?: Motivacao[]; perguntasSeguidas?: number; objecaoAtiva?: boolean } = {},
+  opts: {
+    naFala?: Motivacao[];
+    perguntasSeguidas?: number;
+    objecaoAtiva?: boolean;
+    ultimaFala?: string;
+    clienteEngajado?: boolean;
+  } = {},
 ): Decisao {
   const av = avaliacaoSpin(m);
+  const perguntasSeguidas =
+    opts.perguntasSeguidas ?? perguntasConsecutivas(m.ultimasIntervencoes);
   return decidirProximaAcao({
     mapa: m.mapa ?? novoMapa(),
     motivacoes: m.motivacoes,
     naFala: opts.naFala ?? [],
     spinSuficiente: av.suficiente,
     minimizou: av.minimizou,
-    perguntasSeguidas: opts.perguntasSeguidas ?? 0,
+    perguntasSeguidas,
     objecaoAtiva: opts.objecaoAtiva ?? false,
+    perfil: m.perfilCliente,
+    sinais: opts.ultimaFala ? detectarSinaisFala(opts.ultimaFala) : undefined,
+    dorAtual: m.dorAtual,
+    clienteEngajado: opts.clienteEngajado ?? false,
   });
 }
 
@@ -436,8 +499,10 @@ export function lacunasDaMemoria(m: Memoria): string[] {
 export function camposPreenchidos(m: Memoria): string[] {
   return Object.entries(m)
     .filter(([k, v]) =>
-      k === "mapa" || k === "motivacoes" || k === "ganchos"
+      k === "mapa" || k === "motivacoes" || k === "ganchos" || k === "perfilCliente" || k === "ultimasIntervencoes"
         ? false
+        : k === "dorAtual"
+        ? v !== "desconhecida"
         : k === "diStatus"
         ? v !== "nao_apresentada"
         : k === "spinStatus"
@@ -472,6 +537,8 @@ export function memoriaParaPrompt(m: Memoria): string {
   add("SPIN — eixos já explorados", m.spinPerguntasJaExploradas);
   add("Rota de descoberta dominante", m.rota);
   add("Critérios de compra citados", m.criteriosCompra);
+  add("Dor atual", m.dorAtual);
+  add("Dificuldade do cliente", dificuldadeCliente(m.perfilCliente));
   return linhas.join("\n");
 }
 
