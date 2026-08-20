@@ -140,10 +140,14 @@
     const orient = $("orient");
     orient.textContent = card.orientacao || "";
     orient.classList.remove("idle");
+    const status = card.status || (card.frase ? "complete" : "generating");
     const frase = $("frase");
     if (card.frase) {
       frase.hidden = false;
       $("frase-txt").textContent = card.frase;
+    } else if (status === "generating") {
+      frase.hidden = false;
+      $("frase-txt").textContent = "gerando frase…";
     } else {
       frase.hidden = true;
     }
@@ -156,6 +160,7 @@
     }
     wrap.classList.remove("min");
   }
+
 
   /** Estado sem card: rótulo neutro e área da frase oculta. */
   function paintEstado(texto) {

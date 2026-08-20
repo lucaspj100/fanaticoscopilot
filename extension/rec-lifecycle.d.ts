@@ -1,0 +1,10 @@
+export const GRUPO: Record<string, number>;
+export const GENERATING_TIMEOUT_MS: number;
+export const FALLBACK_FALHA: string;
+export function initialState(): any;
+export function initialCtx(): any;
+export function isFinalCard(card: any): boolean;
+export function reduceCard(ctx: any, card: any, turnIdRaw?: number, now?: number): any;
+export function finalizarSemFrase(ctx: any, turnId: number, now?: number, motivo?: string): any;
+export function reduceTimeout(ctx: any, now?: number, limite?: number): any;
+export function reduceNovoTurno(ctx: any, turnId: number, texto?: string, now?: number): any;

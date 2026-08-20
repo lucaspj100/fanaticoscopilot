@@ -377,9 +377,17 @@ function fillCard(el, card) {
     pq.hidden = true;
   }
 
-  el.querySelector(".meta").textContent =
-    card.fonte === "ia" ? `frase da IA · ${card.ms ?? "?"} ms` : "alerta instantâneo · aguardando frase…";
+  const status = card.status || (card.frase ? "complete" : "generating");
+  const META = {
+    generating: "alerta instantâneo · gerando frase…",
+    complete: `frase da IA · ${card.ms ?? "?"} ms`,
+    final_sem_frase: "IA não sugeriu frase · siga a orientação",
+    failed: "falha técnica na frase · siga a orientação",
+  };
+  el.dataset.status = status;
+  el.querySelector(".meta").textContent = META[status] || META.generating;
 }
+
 
 function showEstado(texto, classe) {
   const el = document.createElement("div");
@@ -388,13 +396,26 @@ function showEstado(texto, classe) {
   els.cards.replaceChildren(el);
 }
 
+let ultimoRenderMs = null;
+let ultimoRecLog = null;
+
 function renderTurnoDiag() {
   if (!els.turno) return;
   const linhas = [
     ["ÚLTIMO TURNO TRANSCRITO", ultimaTranscricao ? String(ultimaTranscricao.turnId) : "—"],
     ["Texto", ultimaTranscricao?.text || "—"],
     ["CARD ATUAL", atual ? `turnId ${atual.turnId} · ${atual.card.tipo}` : "nenhum"],
+    ["STATUS", atual ? atual.card.status || "—" : "—"],
+    ["RECOMMENDATION ID", atual?.card?.id || "—"],
+    ["ESTADO → SIDEPANEL", ultimoRenderMs != null ? `${ultimoRenderMs} ms` : "—"],
+    [
+      "ÚLTIMO EVENTO",
+      ultimoRecLog
+        ? `${ultimoRecLog.event} · ${ultimoRecLog.applied ? "aplicado" : `descartado (${ultimoRecLog.discardReason})`}`
+        : "—",
+    ],
   ];
+
   els.turno.replaceChildren(
     ...linhas.map(([label, value]) => {
       const li = document.createElement("li");
@@ -408,7 +429,7 @@ function renderTurnoDiag() {
 
 /** Renderiza SEMPRE o estado central do background (fonte única da verdade). */
 let seenSequence = -1;
-function renderActive(state) {
+function renderActive(state, stateUpdatedAt) {
   if (!state) return;
   const sequence = state.sequence ?? 0;
   if (sequence < seenSequence) return; // resposta fora de ordem: descarta
@@ -426,6 +447,8 @@ function renderActive(state) {
       els.cards.replaceChildren(el); // no máximo UMA recomendação visível
       atual = { card, el, turnId: card.turnId ?? currentTurnId };
     }
+    const base = stateUpdatedAt || card.completedAt || card.ts;
+    if (base) ultimoRenderMs = Math.max(0, Date.now() - base);
   } else {
     atual = null;
     if (state.kind === "analisando") showEstado("Analisando…", "analisando");
@@ -439,7 +462,13 @@ function renderActive(state) {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "COPILOT_ARMED") refreshArmState();
   // Estado central: única origem do que o sidepanel mostra.
-  if (msg?.type === "COPILOT_ACTIVE_REC") renderActive(msg.state);
+  if (msg?.type === "COPILOT_ACTIVE_REC") renderActive(msg.state, msg.stateUpdatedAt);
+  if (msg?.type === "COPILOT_REC_LOG") {
+    ultimoRecLog = msg.log;
+    CopilotLog.add("recommendation_lifecycle", msg.log);
+    renderTurnoDiag();
+  }
+
   if (msg?.type === "COPILOT_TURN_START" && msg.turnId === 1) {
     ultimaTranscricao = null;
     seenSequence = -1;
