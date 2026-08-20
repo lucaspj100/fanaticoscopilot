@@ -205,18 +205,29 @@ export const Route = createFileRoute("/api/public/coach")({
         // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
         // Na D.I. o assunto citado pelo cliente NÃO sequestra a etapa: só valem tipos da D.I. e sinais críticos.
         const aceitaNaEtapa = (t?: string) =>
-          !!t && t in FALLBACKS && !PROCESSO.has(t) && (!isDI || DI_TIPOS.has(t) || CRITICOS_SEMPRE.has(t));
-        const tipoCliente = aceitaNaEtapa(parsed.tipo)
+          !!t &&
+          t in FALLBACKS &&
+          !PROCESSO.has(t) &&
+          (!isDI || DI_TIPOS.has(t) || CRITICOS_SEMPRE.has(t)) &&
+          (!isSpin || SPIN_TIPOS.has(t) || OBJECOES_REAIS.has(t) || CRITICOS_SEMPRE.has(t));
+        let tipoCliente = aceitaNaEtapa(parsed.tipo)
           ? (parsed.tipo as string)
           : aceitaNaEtapa(quick?.tipo)
             ? (quick as { tipo: string }).tipo
             : "nenhum";
+
+        // SPIN já suficiente: não investigue de novo — oriente a avançar.
+        if (isSpin && spinPronto && SPIN_TIPOS.has(tipoCliente) && tipoCliente !== "spin_suficiente") {
+          tipoCliente = "spin_suficiente";
+        }
 
         let tipo = tipoCliente as SignalType;
         let etapaIA: string | undefined;
         let orientacaoIA: string | undefined;
         let fraseIA = "";
         let diStatusIA: string | undefined;
+        let eixoIA: string | undefined;
+
 
         let confianca = tipo === "nenhum" ? 0 : 0.9;
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
