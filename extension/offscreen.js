@@ -256,9 +256,12 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
   turns.push({ speaker: "cliente", text });
   while (turns.length > 4) turns.shift();
 
+  // Memória viva: roda EM PARALELO, não atrasa o card.
+  atualizarMemoria(text);
+
   // Camada 2 — a IA gera SOMENTE a melhor frase e atualiza o mesmo card
   if (!quick && text.split(/\s+/).length < 4) {
-    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text } }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "COPILOT_DECISION", decision: { decisao: "NO_TRIGGER_DETECTED", motivo: "fala curta demais", text, etapa: etapaManual } }).catch(() => {});
     log("ouvindo");
     return;
   }
@@ -268,8 +271,15 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
     const card = await apiFetch("/api/public/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ turns, tipo: quick?.tipo, etapa: quick?.etapa }),
+      body: JSON.stringify({
+        turns,
+        tipo: quick?.tipo,
+        etapa: etapaManual,
+        etapaManual,
+        memoria,
+      }),
     });
+
     timing.ia = Math.round(performance.now() - iaStart);
     chrome.runtime
       .sendMessage({
