@@ -410,6 +410,11 @@ export const Route = createFileRoute("/api/public/coach")({
         if (isSpin) {
           debug["spin_status"] = spinStatus;
           debug["spin_suficiente"] = spinPronto;
+          debug["spin_condicao"] = avSpin.condicao;
+          debug["spin_motivo"] = avSpin.motivo;
+          debug["spin_faltando"] = avSpin.faltando;
+          debug["spin_minimizou"] = avSpin.minimizou;
+
           debug["spin_eixos_explorados"] = memoria.spinPerguntasJaExploradas;
         }
 
