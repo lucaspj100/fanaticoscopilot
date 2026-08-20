@@ -376,7 +376,16 @@ export function aplicarPatchMapa(
       alterados.push(k);
     }
   }
+  // Exemplo concreto novo supera a minimização anterior: o slot é limpo.
+  const superou = (["impacto", "oportunidade_perdida", "gatilho_agora"] as SlotKey[]).some(
+    (k) => p[k] && p[k]?.estado === "respondido" && (p[k]?.profundidade ?? "baixa") === "alta",
+  );
+  if (superou && mapa.minimizacao?.estado === "respondido") {
+    mapa.minimizacao = { estado: "nao_explorado", valor: null, profundidade: "baixa" };
+    alterados.push("minimizacao");
+  }
   return { mapa, alterados };
+
 }
 
 function normalizarPatch(patch: unknown): Partial<Record<SlotKey, Slot>> {
