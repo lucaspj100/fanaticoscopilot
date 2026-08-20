@@ -113,9 +113,32 @@ export const Route = createFileRoute("/api/public/coach")({
           .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
           .join("\n");
 
+        // Etapa manual do vendedor = fonte da verdade. A IA nunca a substitui.
+        const etapaManual =
+          parsed.etapaManual && (ETAPAS as readonly string[]).includes(parsed.etapaManual)
+            ? parsed.etapaManual
+            : undefined;
+
+        const memoria = normalizarMemoria(parsed.memoria);
+        const memoriaTexto = memoriaParaPrompt(memoria);
+        const camposMemoria = camposPreenchidos(memoria);
+        const blocoContexto = memoriaTexto
+          ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
+          : "";
+        const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
+
         const ms = () => Date.now() - started;
         const nada = (decisao: string, debug?: Record<string, unknown>) =>
-          Response.json({ tipo: "nenhum", fonte: "ia", decisao, ms: ms(), debug }, { headers: CORS });
+          Response.json(
+            {
+              tipo: "nenhum",
+              fonte: "ia",
+              decisao,
+              ms: ms(),
+              debug: { ...debug, etapa_manual: etapaManual ?? null, campos_memoria: camposMemoria },
+            },
+            { headers: CORS },
+          );
 
         // A situação vem da camada 1 (cliente) ou é reclassificada aqui.
         // Sinais de processo dependem da fala do vendedor: bloqueados nesta versão.
@@ -131,6 +154,9 @@ export const Route = createFileRoute("/api/public/coach")({
         let decisao = tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL";
         const debug: Record<string, unknown> = {
           regraLocal: quick?.tipo ?? null,
+          etapa_manual: etapaManual ?? null,
+          memoria_utilizada: !!memoriaTexto,
+          campos_memoria: camposMemoria,
           sinal_baseado_em: tipo === "nenhum" ? undefined : "regra_local",
           motivo_intervencao: tipo === "nenhum" ? undefined : `regra local: ${tipo}`,
         };
@@ -142,7 +168,11 @@ export const Route = createFileRoute("/api/public/coach")({
             const res = await callAI(
               [
                 { role: "system", content: CLASSIFY_SYSTEM },
-                { role: "user", content: `CONVERSA:\n${transcript}\n\nResponda só o JSON.` },
+                {
+                  role: "user",
+                  content: `${blocoEtapa}${blocoContexto}\n\nCONVERSA (a última fala do cliente é a prioridade):\n${transcript}\n\nResponda só o JSON.`,
+                },
+
               ],
               key,
             );
