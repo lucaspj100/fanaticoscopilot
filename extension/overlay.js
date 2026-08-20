@@ -11,13 +11,6 @@
 
   const POS_KEY = "overlayPos";
   // O card pertence a um TURNO de fala. A prioridade só arbitra o MESMO turno.
-  const GRUPO = {
-    fechou: 5, intencao_compra: 5, pedido_decisao: 5,
-    financeiro: 4, pensar: 4, segunda_opiniao: 4, tempo: 4, nao_negocie: 4, isolar_financeiro: 4,
-    metodologia: 3, criterio_compra: 3, validar_solucao: 3, quatro_fatores: 3,
-    aprofunde: 2, aprofunde_objetivo: 2, falta_problema: 2, falta_implicacao: 2, interesse: 2,
-    personalize: 1, di_ausente: 1, rapport_longo: 1,
-  };
 
   const host = document.createElement("div");
   host.id = "united-copilot-overlay-host";
