@@ -28,6 +28,10 @@ let lastPartialAt = 0;
 let partialInFlight = false;
 let preAlertTipo = null; // situação já alertada pela parcial deste turno
 let preAlertAt = null;
+/** Cada fala completa reconhecida recebe um turnId incremental.
+ *  O card pertence a um TURNO, nunca a uma janela de tempo. */
+let turnSeq = 0;
+let currentTurnId = 0;
 const turns = []; // histórico curto enviado à IA
 
 /* ---------- etapa manual + memória viva da call ---------- */
@@ -93,8 +97,10 @@ function log(status, extra) {
   chrome.runtime.sendMessage({ type: "COPILOT_STATUS", status, ...extra }).catch(() => {});
 }
 
-function push(card) {
-  chrome.runtime.sendMessage({ type: "COPILOT_CARD", card: { ...card, etapa: etapaManual } }).catch(() => {});
+function push(card, turnId) {
+  chrome.runtime
+    .sendMessage({ type: "COPILOT_CARD", turnId, card: { ...card, etapa: etapaManual, turnId } })
+    .catch(() => {});
 }
 
 
