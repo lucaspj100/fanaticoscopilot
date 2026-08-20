@@ -2,14 +2,23 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { FALLBACKS, detect, type SignalType } from "@/lib/detector";
-import { camposPreenchidos, memoriaParaPrompt, normalizarMemoria } from "@/lib/memoria";
+import {
+  camposPreenchidos,
+  derivarSpinStatus,
+  memoriaParaPrompt,
+  normalizarMemoria,
+  spinSuficiente,
+} from "@/lib/memoria";
 import {
   CLASSIFY_SYSTEM,
   COACH_SYSTEM,
   DI_CLASSIFY_SYSTEM,
   DI_COACH_EXTRA,
   RULE_SNIPPETS,
+  SPIN_CLASSIFY_SYSTEM,
+  SPIN_COACH_EXTRA,
 } from "@/lib/playbook";
+
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
