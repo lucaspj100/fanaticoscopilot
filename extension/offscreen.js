@@ -287,13 +287,16 @@ async function processTurn(chunks, speechEndAt, vadDetectedAt) {
         decision: {
           decisao: card.decisao || (card.tipo === "nenhum" ? "NO_TRIGGER_DETECTED" : "REGRA_LOCAL"),
           tipo: card.tipo,
-          etapa: card.etapa,
+          etapa: etapaManual,
           orientacao: card.orientacao,
           frase: card.frase,
           confianca: card.confianca,
           aviso: card.aviso,
+          etapaManual,
+          memoriaAt,
           debug: card.debug,
         },
+
       })
       .catch(() => {});
     if (card.tipo && card.tipo !== "nenhum") {
