@@ -4,6 +4,14 @@
  * enviamos esta memória estruturada + os últimos turnos.
  */
 
+export type DiStatus =
+  | "nao_apresentada"
+  | "apresentada"
+  | "resistencia"
+  | "criterios_identificados"
+  | "resistencia_persistente"
+  | "estabelecida";
+
 export type Memoria = {
   etapaAtual: string | null;
   objetivo: string | null;
@@ -16,6 +24,10 @@ export type Memoria = {
   sinaisCompra: string[];
   informacoesImportantes: string[];
   ultimaInteracao: string | null;
+  /** Estado da negociação da Regra do Jogo / D.I. */
+  diStatus: DiStatus;
+  diMotivoResistencia: string | null;
+  diCriteriosParaDecidir: string[];
 };
 
 export const MEMORIA_VAZIA: Memoria = {
@@ -30,6 +42,28 @@ export const MEMORIA_VAZIA: Memoria = {
   sinaisCompra: [],
   informacoesImportantes: [],
   ultimaInteracao: null,
+  diStatus: "nao_apresentada",
+  diMotivoResistencia: null,
+  diCriteriosParaDecidir: [],
+};
+
+const DI_STATUS: DiStatus[] = [
+  "nao_apresentada",
+  "apresentada",
+  "resistencia",
+  "criterios_identificados",
+  "resistencia_persistente",
+  "estabelecida",
+];
+
+/** Progressão do estado da D.I. — nunca retrocede sozinho. */
+const DI_ORDEM: Record<DiStatus, number> = {
+  nao_apresentada: 0,
+  apresentada: 1,
+  resistencia: 2,
+  criterios_identificados: 3,
+  resistencia_persistente: 4,
+  estabelecida: 5,
 };
 
 const LISTAS = [
@@ -38,9 +72,19 @@ const LISTAS = [
   "objecoes",
   "sinaisCompra",
   "informacoesImportantes",
+  "diCriteriosParaDecidir",
 ] as const;
 
-const STRINGS = ["etapaAtual", "objetivo", "problema", "implicacao", "necessidade", "ultimaInteracao"] as const;
+const STRINGS = [
+  "etapaAtual",
+  "objetivo",
+  "problema",
+  "implicacao",
+  "necessidade",
+  "ultimaInteracao",
+  "diMotivoResistencia",
+] as const;
+
 
 const txt = (v: unknown): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
