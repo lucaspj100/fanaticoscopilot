@@ -53,12 +53,16 @@ const MEM_LABELS = [
   ["problema", "Problema"],
   ["implicacao", "Implicação"],
   ["necessidade", "Necessidade"],
+  ["spinStatus", "SPIN"],
+  ["spinImplicacoes", "Implicações (SPIN)"],
+  ["spinPerguntasJaExploradas", "Eixos explorados"],
   ["criterioCompra", "Critério"],
   ["pontosQueGostou", "Gostou"],
   ["objecoes", "Objeções"],
   ["sinaisCompra", "Sinais de compra"],
   ["informacoesImportantes", "Outros"],
 ];
+
 
 let memoriaAtual = null;
 let memoriaAt = null;
