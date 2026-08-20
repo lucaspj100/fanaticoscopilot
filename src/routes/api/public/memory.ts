@@ -3,7 +3,9 @@ import { z } from "zod";
 
 import {
   MEMORY_SYSTEM,
+  aplicarMapaLocal,
   aplicarPatch,
+  mapaDaMemoria,
   camposPreenchidos,
   memoriaParaPrompt,
   normalizarMemoria,
@@ -49,14 +51,19 @@ export const Route = createFileRoute("/api/public/memory")({
           return Response.json({ error: "Payload inválido." }, { status: 400, headers: CORS });
         }
 
-        const atual = normalizarMemoria(parsed.memoria);
+        let atual = normalizarMemoria(parsed.memoria);
         if (parsed.etapa) atual.etapaAtual = parsed.etapa;
         atual.ultimaInteracao = parsed.text.slice(0, 160);
+
+        // Descoberta local instantânea (sem IA): informação espontânea já entra no mapa.
+        const local = aplicarMapaLocal(atual, parsed.text);
+        atual = local.memoria;
+        const alteradosLocais = local.alterados;
 
         const key = process.env["LOVABLE_API_KEY"];
         if (!key) {
           return Response.json(
-            { memoria: atual, alterados: [], campos: camposPreenchidos(atual), ms: Date.now() - started },
+            { memoria: atual, alterados: alteradosLocais, campos: camposPreenchidos(atual), ms: Date.now() - started },
             { headers: CORS },
           );
         }
@@ -74,7 +81,9 @@ export const Route = createFileRoute("/api/public/memory")({
                 { role: "system", content: MEMORY_SYSTEM },
                 {
                   role: "user",
-                  content: `MEMÓRIA ATUAL:\n${memoriaParaPrompt(atual) || "(vazia)"}\n\nFALA DO CLIENTE:\n${
+                  content: `MEMÓRIA ATUAL:\n${memoriaParaPrompt(atual) || "(vazia)"}\n\nMAPA VIVO DO CLIENTE:\n${
+                    mapaDaMemoria(atual) || "(vazio)"
+                  }\n\nFALA DO CLIENTE:\n${
                     parsed.text
                   }\n\nResponda só o JSON com os campos novos.`,
                 },
@@ -83,7 +92,7 @@ export const Route = createFileRoute("/api/public/memory")({
           });
           if (!res.ok) {
             return Response.json(
-              { memoria: atual, alterados: [], campos: camposPreenchidos(atual), ms: Date.now() - started },
+              { memoria: atual, alterados: alteradosLocais, campos: camposPreenchidos(atual), ms: Date.now() - started },
               { headers: CORS },
             );
           }
@@ -91,12 +100,12 @@ export const Route = createFileRoute("/api/public/memory")({
           const patch = extractJson(data.choices?.[0]?.message?.content ?? "");
           const { memoria, alterados } = aplicarPatch(atual, patch);
           return Response.json(
-            { memoria, alterados, campos: camposPreenchidos(memoria), ms: Date.now() - started },
+            { memoria, alterados: [...alteradosLocais, ...alterados], campos: camposPreenchidos(memoria), ms: Date.now() - started },
             { headers: CORS },
           );
         } catch {
           return Response.json(
-            { memoria: atual, alterados: [], campos: camposPreenchidos(atual), ms: Date.now() - started },
+            { memoria: atual, alterados: alteradosLocais, campos: camposPreenchidos(atual), ms: Date.now() - started },
             { headers: CORS },
           );
         }

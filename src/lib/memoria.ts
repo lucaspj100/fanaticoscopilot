@@ -327,7 +327,9 @@ export function lacunasDaMemoria(m: Memoria): string[] {
 export function camposPreenchidos(m: Memoria): string[] {
   return Object.entries(m)
     .filter(([k, v]) =>
-      k === "diStatus"
+      k === "mapa"
+        ? false
+        : k === "diStatus"
         ? v !== "nao_apresentada"
         : k === "spinStatus"
           ? v !== "nao_iniciado"
