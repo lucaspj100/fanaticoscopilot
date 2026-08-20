@@ -135,3 +135,18 @@ button.ghost {
 button.ghost:hover { color: var(--text); }
 #diag-panel { display: flex; flex-direction: column; gap: 12px; }
 .card .tag .rotulo { display: inline-block; }
+
+/* modo compacto / teleprompter */
+.modes { display: flex; gap: 6px; }
+.modes .mode {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.modes .mode.active { background: var(--surface); color: var(--text); border-color: var(--muted); }

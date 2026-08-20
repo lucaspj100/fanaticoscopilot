@@ -33,7 +33,10 @@ chrome.action.onClicked.addListener(async (tab) => {
   chrome.runtime.sendMessage({ type: "COPILOT_ARMED", tabId: tab.id, url: tab.url }).catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => armed.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  armed.delete(tabId);
+  if (overlayTabId === tabId) overlayTabId = null;
+});
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   // navegação revoga o activeTab concedido
   if (info.url) armed.delete(tabId);
@@ -62,12 +65,52 @@ function getMediaStreamId(targetTabId) {
   });
 }
 
+/** aba onde o overlay compacto está injetado */
+let overlayTabId = null;
+
+async function injectOverlay(tabId) {
+  await chrome.scripting.executeScript({ target: { tabId }, files: ["overlay.js"] });
+  overlayTabId = tabId;
+}
+
+function toOverlay(msg) {
+  if (overlayTabId == null) return;
+  chrome.tabs.sendMessage(overlayTabId, msg).catch(() => {});
+}
+
 async function pickTargetTab() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return tab;
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // espelha os cards no overlay compacto (modo teleprompter)
+  if (msg?.type === "COPILOT_CARD") toOverlay(msg);
+
+  if (msg?.type === "COPILOT_OVERLAY_MODE") {
+    (async () => {
+      try {
+        const tab = await pickTargetTab();
+        if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
+        if (msg.enabled) {
+          if (!armed.has(tab.id)) {
+            throw new Error(
+              "Autorização pendente: clique no ÍCONE do United Copilot na barra do Chrome com a aba da call em foco.",
+            );
+          }
+          await injectOverlay(tab.id);
+          chrome.tabs.sendMessage(tab.id, { type: "COPILOT_OVERLAY_SHOW" }).catch(() => {});
+        } else if (overlayTabId != null) {
+          chrome.tabs.sendMessage(overlayTabId, { type: "COPILOT_OVERLAY_HIDE" }).catch(() => {});
+        }
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "COPILOT_QUERY_STATE") {
     (async () => {
       const tab = await pickTargetTab();
@@ -115,6 +158,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           streamId,
           endpoint: msg.endpoint,
         });
+        const { overlayMode } = await chrome.storage.local.get(["overlayMode"]);
+        if (overlayMode === "compacto" || overlayMode === "ambos") {
+          try {
+            await injectOverlay(tab.id);
+          } catch {
+            /* overlay é opcional */
+          }
+        }
+
         sendResponse({ ok: true, tabTitle: tab.title || "aba ativa" });
       } catch (e) {
         sendResponse({ ok: false, error: e?.message || String(e) });
