@@ -19,6 +19,14 @@ import {
   novoMapa,
   profundidadeDe,
 } from "./mapa";
+import {
+  dificuldadeCliente,
+  escolherContribuicao,
+  type Dificuldade,
+  type DorAtual,
+  type PerfilCliente,
+  type SinaisFala,
+} from "./contribuicao";
 
 export const MOTIVACOES = [
   "dor_passada",
@@ -406,6 +414,10 @@ export type Decisao = {
   exemplo: string | null;
   motivo: string;
   profundidadeAtual: Profundidade;
+  /** V3.0 — a ação é uma contribuição (não uma pergunta). */
+  contribuicao?: boolean;
+  dificuldadeCliente?: Dificuldade;
+  dorAtual?: DorAtual;
 };
 
 const PILARES: Array<{ chave: string; ok: (m: Mapa) => boolean }> = [
