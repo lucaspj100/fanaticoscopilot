@@ -112,7 +112,7 @@ const RULES = [
   ["fechou", [/\b(vamos fechar|bora fechar|quero (come[çc]ar|fechar|me matricular)|fechado|t[ôo] dentro|me matricula)\b/i, /\b(sim,? (vamos|quero|pode))\b/i]],
   ["intencao_compra", [/como (eu )?(fa[çc]o|posso) (para|pra) (come[çc]ar|contratar|assinar)/i, /\b(manda o link|onde (eu )?assino|qual o pr[óo]ximo passo)\b/i]],
   ["pensar", [/preciso pensar/i, /vou pensar/i, /pensar (a respeito|com calma|melhor)/i, /depois eu (te )?(retorno|aviso|falo)/i]],
-  ["financeiro", [/\b(caro|pre[çc]o|valor|invest|or[çc]ament|dinheiro|grana|desconto|parcel|condi[çc])\w*/i, /n[ãa]o tenho (esse|como|dinheiro|verba)/i]],
+  ["financeiro", [/\b(caro|pre[çc]o|valor(?!es)|invest|or[çc]ament|dinheiro|grana|desconto|parcel|condi[çc])\w*/i, /n[ãa]o tenho (esse|como|dinheiro|verba)/i]],
   ["segunda_opiniao", [/(minha|meu) (esposa|marido|s[óo]ci[ao]|companheir[ao]|chefe|gestor)/i, /preciso (consultar|alinhar|conversar com)/i, /n[ãa]o decido sozinh/i]],
   ["tempo", [/n[ãa]o (tenho|teria|vou ter) tempo/i, /\b(corrid[oa]|sem tempo|agenda cheia|mais pra frente|ano que vem)\w*/i, /agora n[ãa]o [ée] (o|um bom) momento/i]],
   ["metodologia", [/como (funciona|que funciona|seria)/i, /qual (a|é a) (metodologia|m[ée]todo|din[âa]mica)/i, /\b(quanto tempo dura|garantia|funciona mesmo)\w*/i]],
