@@ -396,13 +396,26 @@ function showEstado(texto, classe) {
   els.cards.replaceChildren(el);
 }
 
+let ultimoRenderMs = null;
+let ultimoRecLog = null;
+
 function renderTurnoDiag() {
   if (!els.turno) return;
   const linhas = [
     ["ÚLTIMO TURNO TRANSCRITO", ultimaTranscricao ? String(ultimaTranscricao.turnId) : "—"],
     ["Texto", ultimaTranscricao?.text || "—"],
     ["CARD ATUAL", atual ? `turnId ${atual.turnId} · ${atual.card.tipo}` : "nenhum"],
+    ["STATUS", atual ? atual.card.status || "—" : "—"],
+    ["RECOMMENDATION ID", atual?.card?.id || "—"],
+    ["ESTADO → SIDEPANEL", ultimoRenderMs != null ? `${ultimoRenderMs} ms` : "—"],
+    [
+      "ÚLTIMO EVENTO",
+      ultimoRecLog
+        ? `${ultimoRecLog.event} · ${ultimoRecLog.applied ? "aplicado" : `descartado (${ultimoRecLog.discardReason})`}`
+        : "—",
+    ],
   ];
+
   els.turno.replaceChildren(
     ...linhas.map(([label, value]) => {
       const li = document.createElement("li");
