@@ -89,6 +89,35 @@ const DI_ORDEM: Record<DiStatus, number> = {
   estabelecida: 5,
 };
 
+const SPIN_STATUS: SpinStatus[] = [
+  "nao_iniciado",
+  "objetivo_identificado",
+  "problema_identificado",
+  "implicacao_identificada",
+  "necessidade_identificada",
+  "suficiente",
+];
+
+const SPIN_ORDEM: Record<SpinStatus, number> = {
+  nao_iniciado: 0,
+  objetivo_identificado: 1,
+  problema_identificado: 2,
+  implicacao_identificada: 3,
+  necessidade_identificada: 4,
+  suficiente: 5,
+};
+
+/** Eixos de aprofundamento — cada um só pode ser explorado uma vez. */
+export const SPIN_EIXOS = [
+  "oportunidades_perdidas",
+  "impacto_financeiro",
+  "impacto_carreira",
+  "rotina",
+  "comunicacao",
+  "urgencia",
+  "confirmacao",
+] as const;
+
 const LISTAS = [
   "criterioCompra",
   "pontosQueGostou",
@@ -96,6 +125,8 @@ const LISTAS = [
   "sinaisCompra",
   "informacoesImportantes",
   "diCriteriosParaDecidir",
+  "spinImplicacoes",
+  "spinPerguntasJaExploradas",
 ] as const;
 
 const STRINGS = [
@@ -106,8 +137,28 @@ const STRINGS = [
   "necessidade",
   "ultimaInteracao",
   "diMotivoResistencia",
+  "spinObjetivo",
+  "spinProblema",
+  "spinNecessidade",
 ] as const;
 
+/**
+ * Campos que, uma vez preenchidos com informação boa, NÃO são sobrescritos
+ * por informação menos relevante em turnos seguintes.
+ */
+const PROTEGIDOS = new Set<string>([
+  "objetivo",
+  "problema",
+  "implicacao",
+  "spinObjetivo",
+  "spinProblema",
+]);
+
+/** "não sei", "depende", "não tenho certeza" = ausência de informação, não implicação. */
+const NAO_INFORMACAO =
+  /^(n[ãa]o sei|nem sei|n[ãa]o tenho certeza|n[ãa]o sei dizer|n[ãa]o fa[çc]o ideia|depende|talvez|acho que n[ãa]o sei)\b/i;
+
+const ehImplicacaoValida = (s: string) => !NAO_INFORMACAO.test(s.trim());
 
 const txt = (v: unknown): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
@@ -125,6 +176,33 @@ const diStatus = (v: unknown): DiStatus | null => {
   return (DI_STATUS as string[]).includes(s) ? (s as DiStatus) : null;
 };
 
+const spinStatusVal = (v: unknown): SpinStatus | null => {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return (SPIN_STATUS as string[]).includes(s) ? (s as SpinStatus) : null;
+};
+
+/**
+ * SPIN suficiente = objetivo + problema + pelo menos uma implicação relevante.
+ * A necessidade explícita é desejável, mas não obrigatória.
+ */
+export function spinSuficiente(m: Memoria): boolean {
+  const objetivo = m.spinObjetivo ?? m.objetivo;
+  const problema = m.spinProblema ?? m.problema;
+  const implicacoes = m.spinImplicacoes.length ? m.spinImplicacoes : m.implicacao ? [m.implicacao] : [];
+  return !!objetivo && !!problema && implicacoes.some(ehImplicacaoValida);
+}
+
+/** Estado do SPIN derivado dos campos — a IA nunca pode inventar um estado maior. */
+export function derivarSpinStatus(m: Memoria): SpinStatus {
+  if (spinSuficiente(m)) return "suficiente";
+  if (m.spinNecessidade ?? m.necessidade) return "necessidade_identificada";
+  if ((m.spinImplicacoes.length ? m.spinImplicacoes : m.implicacao ? [m.implicacao] : []).some(ehImplicacaoValida))
+    return "implicacao_identificada";
+  if (m.spinProblema ?? m.problema) return "problema_identificado";
+  if (m.spinObjetivo ?? m.objetivo) return "objetivo_identificado";
+  return "nao_iniciado";
+}
+
 /** Normaliza qualquer objeto vindo do cliente/IA para o formato da memória. */
 export function normalizarMemoria(input: unknown): Memoria {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
@@ -132,8 +210,10 @@ export function normalizarMemoria(input: unknown): Memoria {
   for (const k of STRINGS) out[k] = txt(o[k]);
   for (const k of LISTAS) out[k] = arr(o[k]);
   out.diStatus = diStatus(o["diStatus"]) ?? "nao_apresentada";
+  out.spinStatus = spinStatusVal(o["spinStatus"]) ?? "nao_iniciado";
   return out;
 }
+
 
 /** Aplica um patch (só campos novos) sobre a memória atual, sem duplicar itens. */
 export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria; alterados: string[] } {
