@@ -516,12 +516,19 @@ export function mapaParaPrompt(mapa: Mapa): string {
     const s = mapa[k];
     if (!s || s.estado === "nao_explorado") continue;
     const marca = s.estado === "parcial" ? " (parcial)" : "";
-    linhas.push(`${SLOTS[k].rotulo}${marca}: ${s.valor ?? "sim"}`);
+    const prof = ` [profundidade: ${s.profundidade ?? profundidadeDe(s.valor)}]`;
+    linhas.push(`${SLOTS[k].rotulo}${marca}${prof}: ${s.valor ?? "sim"}`);
   }
   const faltando = lacunas(mapa)
     .slice(0, 6)
     .map((k) => SLOTS[k].rotulo.toLowerCase());
   if (faltando.length) linhas.push(`AINDA NÃO EXPLORADO: ${faltando.join(", ")}`);
+  const av = avaliarSpin(mapa);
+  linhas.push(
+    av.suficiente
+      ? `MATERIAL COMERCIAL: suficiente (condição ${av.condicao}) — ${av.motivo}`
+      : `MATERIAL COMERCIAL: insuficiente — ${av.motivo}`,
+  );
   return linhas.join("\n");
 }
 
@@ -530,11 +537,20 @@ export const MAPA_SYSTEM_EXTRA = `
 
 MAPA VIVO DO CLIENTE (obrigatório):
 Além dos campos acima, devolva um objeto "mapa" apenas com os slots que ganharam informação NOVA nesta fala.
-Cada slot é {"estado":"parcial|respondido","valor":"até 8 palavras nas palavras do cliente"}.
+Cada slot é {"estado":"parcial|respondido","valor":"até 10 palavras nas palavras do cliente","profundidade":"baixa|media|alta"}.
 Slots possíveis: ${SLOT_KEYS.join(", ")}.
 Regras:
 - "respondido" = a informação está clara, mesmo que o cliente tenha falado espontaneamente, sem ninguém perguntar.
 - "parcial" = o assunto foi aberto mas falta o essencial (ex.: "já fiz inglês antes" → experiencia_anterior respondido, motivo_interrupcao parcial).
 - Uma única fala pode preencher vários slots ("travo falando e por isso evito reuniões" → problema + impacto).
+- PROFUNDIDADE (não confunda com estado):
+  "baixa" = genérico ("não tenho inglês fluente", "quero crescer").
+  "media" = situação concreta, sem consequência clara.
+  "alta" = situação concreta COM consequência prática, profissional, financeira ou emocional.
+- necessidade = por que vale a pena resolver isso para ELE. Oportunidade futura não é necessidade.
+- gatilho_agora = o que mudou para ele olhar inglês justamente agora (evento, prazo, processo).
+- minimizacao = ele diminuiu a dor ("não ligo tanto", "pra mim é tranquilo", "sem pressa").
+  Quando houver minimização, nunca marque impacto ou urgência como respondido com profundidade alta.
 - Nunca invente. Se nada novo, devolva "mapa": {}.
 `.trim();
+
