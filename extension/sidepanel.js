@@ -432,8 +432,12 @@ els.toggle.addEventListener("click", async () => {
     return;
   }
   els.status.textContent = "Conectando à aba…";
-  // Nova sessão de call: zera cards e memória local.
+  // Nova sessão de call: zera cards, turnos e memória local.
   els.cards.replaceChildren();
+  atual = null;
+  currentTurnId = 0;
+  ultimaTranscricao = null;
+  renderTurnoDiag();
   memoriaAt = null;
   renderMemoria(null, []);
   const res = await chrome.runtime.sendMessage({
