@@ -19,13 +19,14 @@ const MEM_FIELDS = [
   "diStatus",
   "diMotivoResistencia",
   "diCriteriosParaDecidir",
+  "mapa",
 ];
 
 function memSnapshot(memoria) {
   const out = {};
   for (const k of MEM_FIELDS) {
     const v = memoria?.[k];
-    out[k] = Array.isArray(v) ? [...v] : (v ?? null);
+    out[k] = Array.isArray(v) ? [...v] : v && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : (v ?? null);
   }
   return out;
 }

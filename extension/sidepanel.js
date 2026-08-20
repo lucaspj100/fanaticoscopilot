@@ -75,6 +75,20 @@ function renderMemoria(memoria, alterados = []) {
     return txt ? [k, label, txt] : null;
   }).filter(Boolean);
 
+  // Mapa vivo do cliente (V2.6) — o que já sabemos e o que ainda falta.
+  const mapa = memoria?.mapa || {};
+  const faltando = [];
+  for (const [slot, dado] of Object.entries(mapa)) {
+    const rot = slot.replace(/_/g, " ").toUpperCase();
+    if (!dado || dado.estado === "nao_explorado") {
+      faltando.push(rot.toLowerCase());
+      continue;
+    }
+    const sufixo = dado.estado === "parcial" ? " (parcial)" : "";
+    linhas.push([`mapa.${slot}`, rot + sufixo, dado.valor || "sim"]);
+  }
+  if (faltando.length) linhas.push(["mapa.lacunas", "AINDA NÃO EXPLORADO", faltando.slice(0, 6).join(" · ")]);
+
   if (!linhas.length) {
     const p = document.createElement("li");
     p.className = "vazio";
