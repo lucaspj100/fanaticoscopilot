@@ -126,19 +126,20 @@ export const Route = createFileRoute("/api/public/coach")({
           return Response.json({ error: "Payload inválido." }, { status: 400, headers: CORS });
         }
 
-        const last = parsed.turns[parsed.turns.length - 1];
-        const quick = last ? detect(last.text) : null;
-
-        const transcript = parsed.turns
-          .slice(-4)
-          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
-          .join("\n");
-
         // Etapa manual do vendedor = fonte da verdade. A IA nunca a substitui.
         const etapaManual =
           parsed.etapaManual && (ETAPAS as readonly string[]).includes(parsed.etapaManual)
             ? parsed.etapaManual
             : undefined;
+        const isDI = etapaManual === "di";
+
+        const last = parsed.turns[parsed.turns.length - 1];
+        const quick = last ? detect(last.text, etapaManual) : null;
+
+        const transcript = parsed.turns
+          .slice(-4)
+          .map((t) => `${t.speaker === "cliente" ? "CLIENTE" : "VENDEDOR"}: ${t.text}`)
+          .join("\n");
 
         const memoria = normalizarMemoria(parsed.memoria);
         const memoriaTexto = memoriaParaPrompt(memoria);
@@ -147,6 +148,13 @@ export const Route = createFileRoute("/api/public/coach")({
           ? `\n\nMEMÓRIA DA CALL (contexto acumulado, use só se deixar a frase mais natural e relevante):\n${memoriaTexto}`
           : "";
         const blocoEtapa = etapaManual ? `\nETAPA ATUAL (definida pelo vendedor): ${etapaManual}` : "";
+        const sugestoes = (parsed.sugestoesAnteriores ?? []).filter((s) => s.trim()).slice(-3);
+        const blocoSugestoes = sugestoes.length
+          ? `\n\nFRASES JÁ SUGERIDAS AO VENDEDOR (não repita nem reformule):\n${sugestoes
+              .map((s) => `- ${s}`)
+              .join("\n")}`
+          : "";
+
 
         const ms = () => Date.now() - started;
         const nada = (decisao: string, debug?: Record<string, unknown>) =>
