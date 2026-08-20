@@ -249,6 +249,13 @@ export const Route = createFileRoute("/api/public/coach")({
         if (isSpin && spinPronto && SPIN_TIPOS.has(tipoCliente) && tipoCliente !== "spin_suficiente") {
           tipoCliente = "spin_suficiente";
         }
+        // V2.7 — sem material comercial, "spin_suficiente" é proibido: aprofunde.
+        if (isSpin && !spinPronto && tipoCliente === "spin_suficiente") {
+          tipoCliente = avSpin.faltando.includes("necessidade / valor da mudança")
+            ? "spin_confirmacao"
+            : "spin_implicacao";
+        }
+
 
         let tipo = tipoCliente as SignalType;
         let etapaIA: string | undefined;
