@@ -154,6 +154,12 @@ function renderDecision(d) {
   if (d.confianca != null) linhas.push(["Confiança", String(d.confianca)]);
   if (d.tipo) linhas.push(["type", d.tipo]);
   if (d.etapa) linhas.push(["stage", d.etapa]);
+  linhas.push(["etapa_manual", d.etapaManual || etapaAtual]);
+  linhas.push([
+    "memoria",
+    memoriaAt ? `${MEM_LABELS.filter(([k]) => { const v = memoriaAtual?.[k]; return Array.isArray(v) ? v.length : v; }).length} campos` : "vazia",
+  ]);
+
   if (d.orientacao) linhas.push(["orientation", d.orientacao]);
   if (d.frase) linhas.push(["suggested_phrase", d.frase]);
   if (d.motivo) linhas.push(["Motivo", d.motivo]);
