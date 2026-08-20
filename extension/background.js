@@ -7,6 +7,15 @@
  * O botão Iniciar do painel usa essa autorização para chamar tabCapture.
  */
 
+import {
+  initialCtx,
+  reduceCard,
+  reduceTimeout,
+  reduceNovoTurno,
+  finalizarSemFrase,
+  GENERATING_TIMEOUT_MS,
+} from "./rec-lifecycle.js";
+
 // Precisamos receber o onClicked para ganhar activeTab, então o painel
 // é aberto manualmente dentro do handler (também é um gesto do usuário).
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
