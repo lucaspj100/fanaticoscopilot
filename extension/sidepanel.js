@@ -385,3 +385,4 @@ els.toggle.addEventListener("click", async () => {
     els.status.textContent = `⚠ ${res?.error || chrome.runtime.lastError?.message || "Falha ao iniciar."}`;
   }
 });
+renderMemoria(null, []);
