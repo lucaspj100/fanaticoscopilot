@@ -377,9 +377,17 @@ function fillCard(el, card) {
     pq.hidden = true;
   }
 
-  el.querySelector(".meta").textContent =
-    card.fonte === "ia" ? `frase da IA · ${card.ms ?? "?"} ms` : "alerta instantâneo · aguardando frase…";
+  const status = card.status || (card.frase ? "complete" : "generating");
+  const META = {
+    generating: "alerta instantâneo · gerando frase…",
+    complete: `frase da IA · ${card.ms ?? "?"} ms`,
+    final_sem_frase: "IA não sugeriu frase · siga a orientação",
+    failed: "falha técnica na frase · siga a orientação",
+  };
+  el.dataset.status = status;
+  el.querySelector(".meta").textContent = META[status] || META.generating;
 }
+
 
 function showEstado(texto, classe) {
   const el = document.createElement("div");
