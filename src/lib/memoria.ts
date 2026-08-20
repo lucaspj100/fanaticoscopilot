@@ -1,3 +1,15 @@
+import {
+  MAPA_SYSTEM_EXTRA,
+  MAPA_VAZIO,
+  aplicarPatchMapa,
+  inferirMapa,
+  lacunas,
+  mapaParaPrompt,
+  normalizarMapa,
+  novoMapa,
+  type Mapa,
+} from "./mapa";
+
 /**
  * Memória viva da call — estado resumido e pequeno, atualizado ao longo
  * da conversa. Nunca enviamos a transcrição inteira para o modelo:
@@ -44,6 +56,8 @@ export type Memoria = {
   spinNecessidade: string | null;
   /** Eixos já explorados (ex.: impacto_financeiro) — nunca repetir o mesmo eixo. */
   spinPerguntasJaExploradas: string[];
+  /** Mapa vivo do cliente — o que já sabemos e o que ainda falta (V2.6). */
+  mapa: Mapa;
 };
 
 export const MEMORIA_VAZIA: Memoria = {
@@ -67,6 +81,7 @@ export const MEMORIA_VAZIA: Memoria = {
   spinImplicacoes: [],
   spinNecessidade: null,
   spinPerguntasJaExploradas: [],
+  mapa: MAPA_VAZIO,
 };
 
 
@@ -211,6 +226,7 @@ export function normalizarMemoria(input: unknown): Memoria {
   for (const k of LISTAS) out[k] = arr(o[k]);
   out.diStatus = diStatus(o["diStatus"]) ?? "nao_apresentada";
   out.spinStatus = spinStatusVal(o["spinStatus"]) ?? "nao_iniciado";
+  out.mapa = normalizarMapa(o["mapa"]);
   return out;
 }
 
@@ -228,6 +244,7 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
     diCriteriosParaDecidir: [...atual.diCriteriosParaDecidir],
     spinImplicacoes: [...atual.spinImplicacoes],
     spinPerguntasJaExploradas: [...atual.spinPerguntasJaExploradas],
+    mapa: { ...(atual.mapa ?? novoMapa()) },
   };
   const alterados: string[] = [];
 
@@ -280,7 +297,29 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
     alterados.push("spinStatus");
   }
 
+  // Mapa vivo: patch da IA + inferência local da própria fala do cliente.
+  const p2 = p as Record<string, unknown>;
+  const patchMapa = aplicarPatchMapa(memoria.mapa, p2["mapa"]);
+  memoria.mapa = patchMapa.mapa;
+  alterados.push(...patchMapa.alterados.map((k) => `mapa.${k}`));
+
   return { memoria, alterados };
+}
+
+/** Aplica na memória o que dá pra descobrir localmente, sem IA (latência zero). */
+export function aplicarMapaLocal(memoria: Memoria, text: string): { memoria: Memoria; alterados: string[] } {
+  const { mapa, alterados } = aplicarPatchMapa(memoria.mapa ?? novoMapa(), inferirMapa(text));
+  return { memoria: { ...memoria, mapa }, alterados: alterados.map((k) => `mapa.${k}`) };
+}
+
+/** Bloco do mapa vivo enviado ao motor de decisão. */
+export function mapaDaMemoria(m: Memoria): string {
+  return mapaParaPrompt(m.mapa ?? novoMapa());
+}
+
+/** Lacunas reais (o que ainda falta descobrir), em ordem de prioridade. */
+export function lacunasDaMemoria(m: Memoria): string[] {
+  return lacunas(m.mapa ?? novoMapa());
 }
 
 
@@ -364,7 +403,9 @@ ESTADO DO SPIN:
 - spinStatus só pode ser: nao_iniciado | objetivo_identificado | problema_identificado | implicacao_identificada | necessidade_identificada | suficiente
 - Citar preço, investimento ou valor NÃO é objeção financeira: só registre em objecoes se houver recusa clara ("está caro", "não tenho esse valor").
 
+${MAPA_SYSTEM_EXTRA}
+
 Responda SOMENTE JSON válido, sem markdown. Exemplo:
-{"objetivo":"conseguir promoção","problema":"inglês trava entrevistas"}
+{"objetivo":"conseguir promoção","problema":"inglês trava entrevistas","mapa":{"objetivo":{"estado":"respondido","valor":"promoção na empresa"}}}
 `.trim();
 
