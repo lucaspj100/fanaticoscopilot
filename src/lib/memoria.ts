@@ -97,12 +97,18 @@ const arr = (v: unknown): string[] =>
     .filter((s): s is string => !!s)
     .slice(0, 6);
 
+const diStatus = (v: unknown): DiStatus | null => {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return (DI_STATUS as string[]).includes(s) ? (s as DiStatus) : null;
+};
+
 /** Normaliza qualquer objeto vindo do cliente/IA para o formato da memória. */
 export function normalizarMemoria(input: unknown): Memoria {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const out = { ...MEMORIA_VAZIA } as Memoria;
   for (const k of STRINGS) out[k] = txt(o[k]);
   for (const k of LISTAS) out[k] = arr(o[k]);
+  out.diStatus = diStatus(o["diStatus"]) ?? "nao_apresentada";
   return out;
 }
 
@@ -116,6 +122,7 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
     objecoes: [...atual.objecoes],
     sinaisCompra: [...atual.sinaisCompra],
     informacoesImportantes: [...atual.informacoesImportantes],
+    diCriteriosParaDecidir: [...atual.diCriteriosParaDecidir],
   };
   const alterados: string[] = [];
 
@@ -136,8 +143,18 @@ export function aplicarPatch(atual: Memoria, patch: unknown): { memoria: Memoria
       }
     }
   }
+
+  // D.I.: o estado avança, nunca retrocede sozinho (exceto para "estabelecida").
+  const novoDi = diStatus(p["diStatus"]);
+  if (novoDi && novoDi !== memoria.diStatus) {
+    if (novoDi === "estabelecida" || DI_ORDEM[novoDi] > DI_ORDEM[memoria.diStatus]) {
+      memoria.diStatus = novoDi;
+      alterados.push("diStatus");
+    }
+  }
   return { memoria, alterados };
 }
+
 
 /** Campos preenchidos — usado no diagnóstico. */
 export function camposPreenchidos(m: Memoria): string[] {
